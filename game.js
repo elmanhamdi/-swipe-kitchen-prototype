@@ -42,8 +42,19 @@
   const MAX_LEVEL = 7;
 
   const SWIPE = {
-    minDistanceRatio: 0.065, // of canvas size
+    minDistanceRatio: 0.032, // of canvas size (mobile-friendly short swipe)
     maxCenterStartRatio: 0.155, // swipe start must be within center radius
+  };
+
+  const INGREDIENT_LABELS = {
+    tomato: 'Tomato',
+    lettuce: 'Salad',
+    cucumber: 'Pickles',
+    cheese: 'Cheese',
+    bun: 'Bread',
+    meat: 'Burger',
+    ham: 'Ham',
+    mushroom: 'Mushroom',
   };
 
   const customerAngles = (() => {
@@ -53,13 +64,12 @@
   })();
 
   function dirIndexFromVector(dx, dy) {
-    // atan2 uses +y down for canvas. We map sectors to the same customer angle order.
-    let angle = Math.atan2(dy, dx); // -PI..PI
-    if (angle < 0) angle += TAU; // 0..2PI
-    const upAngle = (customerAngles[0] + TAU) % TAU; // where index 0 lives
-    const sectorSize = TAU / 8;
-    const offset = (angle - upAngle + TAU) % TAU;
-    return Math.floor(offset / sectorSize); // 0..7
+    // Angle routing from swipe start->end.
+    // Convert to a math-like frame (y up) so top-right is +45deg.
+    const angle = Math.atan2(-dy, dx); // -PI..PI
+    const fromUpClockwise = (Math.PI / 2 - angle + TAU) % TAU;
+    const sector = TAU / 8;
+    return Math.floor((fromUpClockwise + sector / 2) / sector) % 8; // 0..7
   }
 
   function makeOrder(len) {
@@ -94,14 +104,6 @@
 
     const unit = 46 * s;
     const R = unit * 0.52;
-
-    // Soft shadow (2.5D lift)
-    ctx.globalAlpha = 0.35;
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.beginPath();
-    ctx.ellipse(unit * 0.10, unit * 0.26, R * 0.95, R * 0.55, 0, 0, TAU);
-    ctx.fill();
-    ctx.globalAlpha = 1;
 
     // Ingredient silhouettes (no letters)
     if (ingId === 'tomato') {
@@ -331,22 +333,6 @@
       ctx.ellipse(0, -unit * 0.06, R * 1.05, R * 0.78, 0, Math.PI, TAU);
       ctx.stroke();
     }
-
-    // Common outline + specular highlight for readability
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
-    ctx.lineWidth = Math.max(2, unit * 0.04);
-    ctx.beginPath();
-    ctx.arc(0, 0, R * 1.02, 0, TAU);
-    ctx.stroke();
-    const hg = ctx.createRadialGradient(-R * 0.35, -R * 0.55, R * 0.12, 0, 0, R * 1.4);
-    hg.addColorStop(0, 'rgba(255,255,255,0.85)');
-    hg.addColorStop(0.35, 'rgba(255,255,255,0.10)');
-    hg.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = hg;
-    ctx.beginPath();
-    ctx.arc(0, 0, R * 1.02, 0, TAU);
-    ctx.fill();
 
     ctx.restore();
   }
@@ -758,10 +744,8 @@
       return;
     }
 
-    // Stabilize direction by projecting from board center to swipe end.
-    const dirDx = endX - board.cx;
-    const dirDy = endY - board.cy;
-    const dirIndex = dirIndexFromVector(dirDx, dirDy); // 0..7
+    // Direction is based purely on start->end angle.
+    const dirIndex = dirIndexFromVector(dx, dy); // 0..7
     const cust = game.customers[dirIndex];
     const ingId = game.activeIngredient.id;
     const expected = cust.order[cust.progressIndex];
@@ -912,15 +896,16 @@
         rotate: Math.sin(t * 4) * 0.08,
       });
 
-      // Center ring hint
+      // Center ingredient name
+      const label = INGREDIENT_LABELS[game.activeIngredient.id] || game.activeIngredient.id;
       ctx.save();
-      ctx.globalAlpha = 0.35;
-      const rr = board.rCenter * (1 + Math.sin(t * 4.2) * 0.02);
-      ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-      ctx.lineWidth = Math.max(2, board.size * 0.0025);
-      ctx.beginPath();
-      ctx.arc(board.cx, board.cy, rr, 0, TAU);
-      ctx.stroke();
+      ctx.fillStyle = 'rgba(234,242,255,0.96)';
+      ctx.font = `${Math.max(14, Math.floor(board.size * 0.035))}px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = 'rgba(0,0,0,0.45)';
+      ctx.shadowBlur = 8;
+      ctx.fillText(label, board.cx, board.cy + board.rCenter * 1.15);
       ctx.restore();
     }
 
