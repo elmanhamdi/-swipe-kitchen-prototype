@@ -817,10 +817,12 @@
     const dx = x - startX;
     const dy = y - startY;
 
-    game.swipeStart = null;
-
     // Determine direction and attempt.
     attemptSwipe(x, y);
+
+    // Clear swipe start after processing so attemptSwipe can read it.
+    game.swipeStart = null;
+
     // Small lock to avoid accidental double triggers if user lifts twice.
     game.swipeLock = true;
     setTimeout(() => {
