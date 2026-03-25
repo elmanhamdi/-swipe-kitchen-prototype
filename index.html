@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Snackable Swipe (Prototype)</title>
+    <link rel="stylesheet" href="./game.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="gameCanvas" aria-label="Snackable Swipe game"></canvas>
+
+      <div id="uiOverlay" aria-hidden="false">
+        <div class="topBar">
+          <div class="stat">Score: <span id="score">0</span></div>
+          <div class="stat">Streak: <span id="streak">0</span></div>
+          <div class="stat">Best: <span id="best">0</span></div>
+        </div>
+
+        <div id="centerHelp" class="help">
+          Swipe from the center in any of 8 directions.
+        </div>
+
+        <button id="startBtn" class="startBtn" type="button">Start</button>
+
+        <div id="endScreen" class="endScreen" hidden>
+          <div class="endTitle">Time!</div>
+          <div class="endScore">Final score: <span id="finalScore">0</span></div>
+          <button id="restartBtn" class="startBtn" type="button">Play again</button>
+          <div class="endHint">Tip: Chain swipes quickly for higher streak.</div>
+        </div>
+
+        <div id="touchToast" class="touchToast" hidden>
+          Make a quick swipe (not a tap).
+        </div>
+      </div>
+    </div>
+
+    <script src="./game.js"></script>
+  </body>
+</html>
+
