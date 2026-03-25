@@ -176,9 +176,9 @@
     } else if (ingId === 'bun') {
       // Bun top + bottom
       const topG = ctx.createRadialGradient(-R * 0.25, -R * 0.55, R * 0.18, 0, 0, R * 1.35);
-      topG.addColorStop(0, '#FFF1DA');
-      topG.addColorStop(0.55, ing.top);
-      topG.addColorStop(1, ing.side);
+      topG.addColorStop(0, '#FFF8E8');
+      topG.addColorStop(0.50, ing.top);
+      topG.addColorStop(1, '#B98244');
       ctx.fillStyle = topG;
       ctx.beginPath();
       ctx.ellipse(0, -unit * 0.10, R * 1.05, R * 0.78, 0, Math.PI, TAU);
@@ -188,13 +188,20 @@
       ctx.fill();
 
       // Bottom bun
-      ctx.fillStyle = ing.side;
+      ctx.fillStyle = '#9A6837';
       ctx.beginPath();
       ctx.ellipse(0, unit * 0.34, R * 0.98, R * 0.38, 0, 0, TAU);
       ctx.fill();
 
+      // Outline for stronger contrast
+      ctx.strokeStyle = 'rgba(70,38,10,0.48)';
+      ctx.lineWidth = Math.max(2, unit * 0.035);
+      ctx.beginPath();
+      ctx.ellipse(0, -unit * 0.02, R * 1.04, R * 0.72, 0, 0, TAU);
+      ctx.stroke();
+
       // Sesame
-      ctx.fillStyle = 'rgba(255,255,255,0.40)';
+      ctx.fillStyle = 'rgba(255,255,255,0.62)';
       for (let i = 0; i < 8; i++) {
         const a = (i / 8) * TAU + 0.4;
         ctx.beginPath();
@@ -287,29 +294,40 @@
         ctx.restore();
       }
     } else if (ingId === 'ham') {
-      // Ham: two layered slices (stacked, slightly offset)
+      // Ham: two layered squared-ish slices
       const drawHamSlice = (offX, offY, scale, edgeAlpha) => {
         const g = ctx.createRadialGradient(-R * 0.30 + offX, -R * 0.45 + offY, R * 0.14, 0, 0, R * 1.35);
         g.addColorStop(0, '#FFE7F2');
         g.addColorStop(0.55, ing.top);
         g.addColorStop(1, ing.side);
         ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.ellipse(offX, unit * 0.02 + offY, R * 1.05 * scale, R * 0.78 * scale, -0.12, 0, TAU);
+        const w = R * 1.78 * scale;
+        const h = R * 1.34 * scale;
+        drawRoundedRect(offX - w / 2, unit * 0.02 + offY - h / 2, w, h, R * 0.26 * scale);
         ctx.fill();
 
         // Fold highlight
         ctx.strokeStyle = `rgba(255,255,255,${0.26 * edgeAlpha})`;
         ctx.lineWidth = Math.max(2, unit * 0.035 * scale);
-        ctx.beginPath();
-        ctx.ellipse(-unit * 0.08 + offX, -unit * 0.06 + offY, R * 0.55 * scale, R * 0.36 * scale, -0.35, 0, TAU);
+        drawRoundedRect(
+          offX - w * 0.36,
+          unit * 0.02 + offY - h * 0.30,
+          w * 0.72,
+          h * 0.60,
+          R * 0.18 * scale
+        );
         ctx.stroke();
 
         // Fat edge
         ctx.strokeStyle = `rgba(255,255,255,${0.34 * edgeAlpha})`;
         ctx.lineWidth = Math.max(2, unit * 0.04 * scale);
-        ctx.beginPath();
-        ctx.ellipse(unit * 0.02 + offX, unit * 0.06 + offY, R * 0.92 * scale, R * 0.66 * scale, -0.12, 0, TAU);
+        drawRoundedRect(
+          offX - w * 0.45 + unit * 0.02,
+          unit * 0.02 + offY - h * 0.36 + unit * 0.04,
+          w * 0.90,
+          h * 0.72,
+          R * 0.22 * scale
+        );
         ctx.stroke();
       };
 
@@ -383,16 +401,30 @@
     const iconPx = r * 1.05; // readable, bigger than face
     const iconScale = iconPx / 46;
     const yRow = r * 0.92; // below face
-    const iconSpacing = r * 0.22; // slightly closer
+    const iconSpacing = r * 0.34; // spread farther apart
 
-    for (let i = 0; i < iconCount; i++) {
+    // Draw queued ingredients first.
+    for (let i = 1; i < iconCount; i++) {
       const ingId = remaining[i];
-      const isNext = ingId === next && i === 0;
+      const isNext = false;
       const xRow = (i - (iconCount - 1) / 2) * iconSpacing;
       drawIngredient(ingId, xRow, yRow, iconScale * (isNext ? 1.08 : 1.0), {
         time: t,
         rotate: isNext ? Math.sin(t * 6 + cust.phase) * 0.06 : 0,
         bob: isNext,
+      });
+    }
+
+    // Draw current requested ingredient last so it appears in front.
+    if (iconCount > 0) {
+      const i = 0;
+      const ingId = remaining[0];
+      const isNext = true;
+      const xRow = (i - (iconCount - 1) / 2) * iconSpacing;
+      drawIngredient(ingId, xRow, yRow, iconScale * 1.08, {
+        time: t,
+        rotate: Math.sin(t * 6 + cust.phase) * 0.06,
+        bob: true,
       });
 
       if (isNext) {
