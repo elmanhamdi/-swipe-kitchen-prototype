@@ -40,7 +40,8 @@
   const MAX_LEVEL = 7;
 
   const SWIPE = {
-    minDistanceRatio: 0.032, // of canvas size (mobile-friendly short swipe)
+    // Start→end distance at or below this is a tap (reroll). Above it is a swipe (angle).
+    tapMaxMoveRatio: 0.038,
     maxCenterStartRatio: 0.155, // swipe start must be within center radius
   };
 
@@ -571,7 +572,7 @@
     board.rCustomers = cssSize * 0.42 * 0.9; // 10% closer to center
     board.rCenter = cssSize * 0.14;
     board.projectileRadius = cssSize * 0.08;
-    board.swipeThreshold = cssSize * SWIPE.minDistanceRatio;
+    board.tapMaxDistance = cssSize * SWIPE.tapMaxMoveRatio;
     board.centerStartMax = cssSize * SWIPE.maxCenterStartRatio;
   }
 
@@ -581,7 +582,7 @@
     cy: 0,
     rCustomers: 0,
     rCenter: 0,
-    swipeThreshold: 0,
+    tapMaxDistance: 0,
     centerStartMax: 0,
     projectileRadius: 0,
   };
@@ -719,12 +720,6 @@
     const startY = game.swipeStart.y;
     const dx = endX - startX;
     const dy = endY - startY;
-    const dist = Math.hypot(dx, dy);
-
-    if (dist < board.swipeThreshold) {
-      showTouchToast(700);
-      return;
-    }
 
     const startDistFromCenter = Math.hypot(startX - board.cx, startY - board.cy);
     if (startDistFromCenter > board.centerStartMax) {
@@ -972,8 +967,8 @@
     const dy = y - startY;
     const dist = Math.hypot(dx, dy);
 
-    // Tap behavior: if tapping the centered ingredient, reroll it (instead of treating it as a swipe).
-    if (dist < board.swipeThreshold) {
+    // Tap only when movement is small; larger movement is always a swipe by angle.
+    if (dist <= board.tapMaxDistance) {
       const t = nowMs();
       const startDistFromCenter = Math.hypot(startX - board.cx, startY - board.cy);
       const endDistFromCenter = Math.hypot(x - board.cx, y - board.cy);
