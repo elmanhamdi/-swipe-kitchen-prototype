@@ -40,9 +40,20 @@
   const MAX_LEVEL = 7;
 
   const SWIPE = {
-    // Start→end distance at or below this is a tap (reroll). Above it is a swipe (angle).
+    // Stretch from center below this counts as tap (reroll), not a slingshot shot.
     tapMaxMoveRatio: 0.038,
-    maxCenterStartRatio: 0.155, // swipe start must be within center radius
+    maxCenterStartRatio: 0.155, // pointer down must start within center radius
+  };
+
+  const SLINGSHOT = {
+    // Projectile duration (ms): weak pull → strong pull
+    deliverDurationMin: 115,
+    deliverDurationMax: 300,
+    failDurationMin: 95,
+    failDurationMax: 220,
+    // Stretch normalization: beyond this pull distance counts as full power
+    stretchMaxRatio: 0.42,
+    overshootAlongRay: 0.14, // extra distance toward customer at full stretch
   };
 
   const INGREDIENT_LABELS = {
@@ -637,6 +648,10 @@
     swipeLock: false,
     swipeStart: null,
     swipeCurrent: null,
+    aiming: false,
+    aimPointerId: null,
+    aimX: 0,
+    aimY: 0,
     changeCooldownUntil: 0,
     touchToastUntil: 0,
   };
@@ -657,6 +672,10 @@
     game.swipeLock = false;
     game.swipeStart = null;
     game.swipeCurrent = null;
+    game.aiming = false;
+    game.aimPointerId = null;
+    game.aimX = 0;
+    game.aimY = 0;
     game.changeCooldownUntil = 0;
     ui.score.textContent = formatScore(game.score);
     ui.streak.textContent = formatScore(game.streak);
@@ -735,6 +754,10 @@
 
   function endGame() {
     game.running = false;
+    game.swipeStart = null;
+    game.swipeCurrent = null;
+    game.aiming = false;
+    game.aimPointerId = null;
     ui.endScreen.hidden = false;
     ui.finalScore.textContent = formatScore(game.score);
     ui.startBtn.hidden = false;
@@ -742,28 +765,34 @@
     ui.timeLeft.textContent = '0';
   }
 
-  function attemptSwipe(endX, endY) {
+  function clearGestureState() {
+    game.swipeStart = null;
+    game.swipeCurrent = null;
+    game.aiming = false;
+    game.aimPointerId = null;
+  }
+
+  function attemptSlingshotLaunch(pullX, pullY) {
     if (!game.running) return;
     if (!game.activeIngredient) return;
-    if (!game.swipeStart) return;
     if (game.swipeLock) return;
 
-    const startX = game.swipeStart.x;
-    const startY = game.swipeStart.y;
-    const dx = endX - startX;
-    const dy = endY - startY;
+    const launchDx = -pullX;
+    const launchDy = -pullY;
+    if (Math.hypot(launchDx, launchDy) < 1e-6) return;
 
-    const startDistFromCenter = Math.hypot(startX - board.cx, startY - board.cy);
-    if (startDistFromCenter > board.centerStartMax) {
-      return;
-    }
-
-    // Direction is based purely on start->end angle.
-    const dirIndex = dirIndexFromVector(dx, dy); // 0..7
+    const dirIndex = dirIndexFromVector(launchDx, launchDy);
     const cust = game.customers[dirIndex];
     const ingId = game.activeIngredient.id;
     const expected = cust.order[cust.progressIndex];
     const success = ingId === expected;
+
+    const stretch = Math.hypot(pullX, pullY);
+    const stretchMin = board.tapMaxDistance;
+    const stretchMax = board.size * SLINGSHOT.stretchMaxRatio;
+    const stretchT = clamp((stretch - stretchMin) / Math.max(1e-6, stretchMax - stretchMin), 0, 1);
+    const durDeliver = lerp(SLINGSHOT.deliverDurationMax, SLINGSHOT.deliverDurationMin, stretchT);
+    const durFail = lerp(SLINGSHOT.failDurationMax, SLINGSHOT.failDurationMin, stretchT);
 
     // Consume ingredient immediately for chaining.
     game.activeIngredient = null;
@@ -779,36 +808,33 @@
       cust.face = 2;
       cust.faceTimer = 0.45;
 
-      // Projectile to customer
       const fromX = board.cx;
       const fromY = board.cy;
-      const toX = board.cx + Math.cos(customerAngles[dirIndex]) * board.rCustomers;
-      const toY = board.cy + Math.sin(customerAngles[dirIndex]) * board.rCustomers;
-      game.inFlight.push(makeProjectile('deliver', ingId, fromX, fromY, toX, toY, 220));
+      const ang = customerAngles[dirIndex];
+      const reach = board.rCustomers * (1 + SLINGSHOT.overshootAlongRay * stretchT);
+      const toX = board.cx + Math.cos(ang) * reach;
+      const toY = board.cy + Math.sin(ang) * reach;
+      game.inFlight.push(makeProjectile('deliver', ingId, fromX, fromY, toX, toY, durDeliver));
 
-      // Completion effects
       if (cust.progressIndex >= cust.order.length) {
         cust.leaving = true;
         cust.leaveTimer = 0.65;
         game.score += 18 + Math.min(12, cust.order.length * 2);
         game.streak += 1;
-        // Bonus time for completing full order
         game.endMs += 15000;
       }
     } else {
-      // Miss: streak breaks
       game.streak = 0;
       game.score = Math.max(0, game.score - 3);
       cust.face = 1;
       cust.faceTimer = 0.40;
 
-      // Failure projectile: pop back / to random wobble
       const fromX = board.cx;
       const fromY = board.cy;
-      const wobble = (Math.random() - 0.5) * board.size * 0.20;
+      const wobble = (Math.random() - 0.5) * board.size * 0.20 * (0.6 + stretchT * 0.4);
       const toX = fromX + wobble;
-      const toY = fromY + (Math.random() - 0.5) * board.size * 0.18;
-      game.inFlight.push(makeProjectile('fail', ingId, fromX, fromY, toX, toY, 180));
+      const toY = fromY + (Math.random() - 0.5) * board.size * 0.18 * (0.6 + stretchT * 0.4);
+      game.inFlight.push(makeProjectile('fail', ingId, fromX, fromY, toX, toY, durFail));
     }
 
     updateHUD();
@@ -888,6 +914,41 @@
 
     drawBackground(board, t);
 
+    // Slingshot rubber band (pivot at center → finger while aiming)
+    if (game.aiming && game.activeIngredient) {
+      const px = board.cx;
+      const py = board.cy;
+      const ax = game.aimX;
+      const ay = game.aimY;
+      const mx = (px + ax) * 0.5;
+      const my = (py + ay) * 0.5;
+      const nx = -(ay - py);
+      const ny = ax - px;
+      const nlen = Math.hypot(nx, ny) || 1;
+      const bow = board.size * 0.04;
+      const bx = mx + (nx / nlen) * bow;
+      const by = my + (ny / nlen) * bow;
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(255,255,255,0.38)';
+      ctx.lineWidth = Math.max(2.5, board.size * 0.007);
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.quadraticCurveTo(bx, by, ax, ay);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(180,230,255,0.35)';
+      ctx.lineWidth = Math.max(1.5, board.size * 0.004);
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(ax, ay);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.beginPath();
+      ctx.arc(ax, ay, Math.max(4, board.size * 0.016), 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+
     // Customers
     for (let i = 0; i < 8; i++) {
       const cust = game.customers[i];
@@ -952,7 +1013,7 @@
     ctx.restore();
   }
 
-  // Input (8-direction swipe from center)
+  // Input: slingshot from center (pivot), release to launch opposite pull
   function pointerToCanvas(e) {
     const rect = canvas.getBoundingClientRect();
     const xCss = e.clientX - rect.left;
@@ -961,27 +1022,33 @@
   }
 
   function onPointerDown(e) {
-    if (e.pointerType === 'mouse') {
-      // Allow mouse testing: still uses swipe direction.
-    }
     if (!game.running) return;
-
-    // Only one pointer at a time (mobile-friendly).
     if (game.swipeStart) return;
 
-    canvas.setPointerCapture?.(e.pointerId);
     const { x, y } = pointerToCanvas(e);
-    game.swipeStart = { id: e.pointerId, x, y, t: nowMs() };
-    game.swipeCurrent = { id: e.pointerId, x, y, t: game.swipeStart.t };
+    const distFromCenter = Math.hypot(x - board.cx, y - board.cy);
+    if (distFromCenter > board.centerStartMax) return;
+
+    canvas.setPointerCapture?.(e.pointerId);
+    const t = nowMs();
+    game.swipeStart = { id: e.pointerId, x, y, t };
+    game.swipeCurrent = { id: e.pointerId, x, y, t };
+    game.aiming = true;
+    game.aimPointerId = e.pointerId;
+    game.aimX = x;
+    game.aimY = y;
   }
 
   function onPointerMove(e) {
-    // Keep mostly for touch responsiveness; no heavy work.
     if (!game.running) return;
     if (!game.swipeStart) return;
     if (e.pointerId !== game.swipeStart.id) return;
     const { x, y } = pointerToCanvas(e);
     game.swipeCurrent = { id: e.pointerId, x, y, t: nowMs() };
+    if (game.aiming && e.pointerId === game.aimPointerId) {
+      game.aimX = x;
+      game.aimY = y;
+    }
   }
 
   function onPointerUp(e) {
@@ -989,22 +1056,16 @@
     if (!game.swipeStart) return;
     if (e.pointerId !== game.swipeStart.id) return;
 
-    const startX = game.swipeStart.x;
-    const startY = game.swipeStart.y;
-
-    // Use pointerup as authoritative endpoint for direction accuracy.
     const { x, y } = pointerToCanvas(e);
+    const pullX = x - board.cx;
+    const pullY = y - board.cy;
+    const stretch = Math.hypot(pullX, pullY);
 
-    const dx = x - startX;
-    const dy = y - startY;
-    const dist = Math.hypot(dx, dy);
-
-    // Tap only when movement is small; larger movement is always a swipe by angle.
-    if (dist <= board.tapMaxDistance) {
+    // Tap: little stretch from center (finger stayed near pivot)
+    if (stretch <= board.tapMaxDistance) {
       const t = nowMs();
-      const startDistFromCenter = Math.hypot(startX - board.cx, startY - board.cy);
-      const endDistFromCenter = Math.hypot(x - board.cx, y - board.cy);
-      const inCenter = startDistFromCenter <= board.rCenter * 1.25 && endDistFromCenter <= board.rCenter * 1.25;
+      const endDistFromCenter = stretch;
+      const inCenter = endDistFromCenter <= board.rCenter * 1.25;
 
       if (inCenter && t >= game.changeCooldownUntil) {
         if (rerollIngredient()) game.changeCooldownUntil = t + 700;
@@ -1012,8 +1073,7 @@
         showTouchToast(700);
       }
 
-      game.swipeStart = null;
-      game.swipeCurrent = null;
+      clearGestureState();
       game.swipeLock = true;
       setTimeout(() => {
         game.swipeLock = false;
@@ -1021,14 +1081,10 @@
       return;
     }
 
-    // Determine direction and attempt.
-    attemptSwipe(x, y);
+    attemptSlingshotLaunch(pullX, pullY);
 
-    // Clear swipe start after processing so attemptSwipe can read it.
-    game.swipeStart = null;
-    game.swipeCurrent = null;
+    clearGestureState();
 
-    // Small lock to avoid accidental double triggers if user lifts twice.
     game.swipeLock = true;
     setTimeout(() => {
       game.swipeLock = false;
@@ -1049,8 +1105,7 @@
     canvas.addEventListener(
       'pointercancel',
       () => {
-        game.swipeStart = null;
-        game.swipeCurrent = null;
+        clearGestureState();
       },
       { passive: true }
     );
