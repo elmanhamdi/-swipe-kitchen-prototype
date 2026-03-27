@@ -159,7 +159,7 @@ export function disposeObject3D(root) {
 export function buildOrderPreviewGroup(order, scale = 0.68) {
   const root = new THREE.Group();
   root.name = 'OrderPreview';
-  let y = 0;
+  let y = -1;
   /* Extra air between layers so each ingredient reads clearly */
   const gap = STACK_GAP * scale * 3.1;
   order.forEach((type) => {

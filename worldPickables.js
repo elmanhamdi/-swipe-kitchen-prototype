@@ -76,7 +76,7 @@ export class WorldPickables {
       new THREE.CylinderGeometry(0.2 * 2, 0.26 * 2, 0.42 * 2, 16),
       trashMat,
     );
-    const trashZ = 1.38;
+    const trashZ = 4.2;
     const trashX = 0;
     trash.position.set(trashX, 0.27 * 2, trashZ);
     trash.castShadow = true;
@@ -142,7 +142,7 @@ export class WorldPickables {
         const geo = new TextGeometry('OPEN', {
           font,
           size: 0.34,
-          depth: 0.09,
+          depth: 0.01,
           curveSegments: 8,
           bevelEnabled: true,
           bevelThickness: 0.02,
