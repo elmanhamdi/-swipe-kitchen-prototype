@@ -175,6 +175,19 @@
       .burger-ui__serve:active {
         transform: translateY(1px);
       }
+
+      .floating-bonus-text {
+        position: absolute;
+        left: 0;
+        top: 0;
+        font: 800 15px/1.1 system-ui, sans-serif;
+        letter-spacing: 0.04em;
+        text-shadow:
+          0 0 12px rgba(0, 0, 0, 0.85),
+          0 2px 4px rgba(0, 0, 0, 0.9);
+        white-space: nowrap;
+        will-change: transform, opacity;
+      }
     </style>
     <script type="importmap">
       {

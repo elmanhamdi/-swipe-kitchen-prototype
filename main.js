@@ -10,6 +10,7 @@ import { CustomerManager } from './customerManager.js';
 import { ROOM, ZONES, halfWidthAtZ, xLeftAtZ, xRightAtZ } from './roomConstants.js';
 import { SlingshotController } from './slingshot.js';
 import { GameSession } from './gameCore.js';
+import { FloatingBonusLayer } from './floatingBonusText.js';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -323,6 +324,8 @@ function init() {
   }
   refreshHud();
 
+  const floatingLayer = new FloatingBonusLayer(stage, camera);
+
   const slingshot = new SlingshotController({
     camera,
     domElement: renderer.domElement,
@@ -332,6 +335,7 @@ function init() {
     stackAnchor,
     customerManager,
     gameSession,
+    floatingLayer,
     onSettled: refreshHud,
   });
 
@@ -355,6 +359,9 @@ function init() {
       if (result.ok) {
         punchButton(btn);
         stackView.rebuildFromStack(burger.getStack(), { animateLast: true });
+        if (burger.getStack().length === 1) {
+          gameSession.notifyFirstIngredientPlaced();
+        }
       }
       refreshHud();
     });
@@ -365,6 +372,7 @@ function init() {
     if (!gameSession.canPlay() || slingshot.isBusy()) return;
     punchButton(trashBtn);
     gameSession.resetCombo();
+    gameSession.clearBurgerTiming();
     burger.reset();
     stackView.clearFeedbacks();
     stackView.rebuildFromStack(burger.getStack(), { animateLast: false });
@@ -382,7 +390,8 @@ function init() {
       if (statusEl) statusEl.textContent = 'No customer wants that order — check stacks above them.';
       return;
     }
-    gameSession.applyCorrectDelivery(served.baseReward, 0);
+    gameSession.applyCorrectDelivery(served.baseReward, 0, {});
+    gameSession.clearBurgerTiming();
     burger.reset();
     stackView.clearFeedbacks();
     stackView.rebuildFromStack(burger.getStack(), { animateLast: false });
@@ -419,6 +428,7 @@ function init() {
     stackView.update(dt);
     customerManager.update(dt);
     slingshot.update(dt);
+    floatingLayer.update(dt);
     renderer.render(scene, camera);
   }
 

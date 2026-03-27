@@ -100,6 +100,7 @@ export class SlingshotController {
    * @param {THREE.Object3D} o.stackAnchor
    * @param {import('./customerManager.js').CustomerManager} o.customerManager
    * @param {import('./gameCore.js').GameSession} o.gameSession
+   * @param {import('./floatingBonusText.js').FloatingBonusLayer} [o.floatingLayer]
    * @param {() => void} [o.onSettled] after projectile ends / burger returns to plate
    */
   constructor(o) {
@@ -111,6 +112,7 @@ export class SlingshotController {
     this.stackAnchor = o.stackAnchor;
     this.customerManager = o.customerManager;
     this.gameSession = o.gameSession;
+    this.floatingLayer = o.floatingLayer ?? null;
     this._onSettled = typeof o.onSettled === 'function' ? o.onSettled : null;
 
     this.counterBox = getCounterAabb();
@@ -327,9 +329,11 @@ export class SlingshotController {
       /** @type {string[]} snapshot for exact match vs customer order */
       thrownStack: stack,
     };
+    this.gameSession.notifyThrowLaunched();
   }
 
   _finishThrow() {
+    this.gameSession.clearBurgerTiming();
     if (this._proj) {
       this._proj.mesh.removeFromParent();
       disposeObject3D(this._proj.mesh);
@@ -417,8 +421,22 @@ export class SlingshotController {
       _tmp.copy(p.pos).sub(c.center);
       if (_tmp.length() < p.r + c.radius) {
         const stack = p.thrownStack;
-        const { correct } = this.gameSession.resolveThrowVsCustomer(stack, c.index, this.customerManager);
-        if (correct) {
+        const hitEntry = this.customerManager.entries[c.index];
+        const hitAnchor = new THREE.Vector3();
+        if (hitEntry) {
+          hitEntry.view.root.getWorldPosition(hitAnchor);
+          hitAnchor.y += 2.05;
+        }
+        const result = this.gameSession.resolveThrowVsCustomer(stack, c.index, this.customerManager);
+        if (result.correct) {
+          if (this.floatingLayer && hitEntry) {
+            if (result.fast) this.floatingLayer.spawn(hitAnchor.clone(), 'FAST!', '#8fffac');
+            if (result.insane) {
+              const w = hitAnchor.clone();
+              w.y += 0.38;
+              this.floatingLayer.spawn(w, 'INSANE!', '#ff9cf9');
+            }
+          }
           this._finishThrow();
         } else {
           this.customerManager.notifyHit(c.index);
