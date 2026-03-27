@@ -4,6 +4,8 @@
  */
 
 import * as THREE from 'three';
+import { Burger } from './burgerData.js';
+import { createPlate, BurgerStackView } from './burgerVisuals.js';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -299,6 +301,74 @@ function init() {
 
   scene.add(buildRestaurantRoom());
 
+  // --- Player area: plate + burger stack (data vs visuals separated) ---
+  const burger = new Burger();
+  const playArea = new THREE.Group();
+  playArea.name = 'PlayArea';
+  playArea.position.set(0, 0, 2.42);
+  scene.add(playArea);
+
+  const plate = createPlate();
+  playArea.add(plate);
+
+  const stackAnchor = new THREE.Group();
+  stackAnchor.position.set(0, 0.13, 0);
+  playArea.add(stackAnchor);
+
+  const stackView = new BurgerStackView(stackAnchor);
+  stackView.rebuildFromStack(burger.getStack(), { animateLast: false });
+
+  const clock = new THREE.Clock();
+  const statusEl = document.getElementById('burger-status');
+
+  function refreshStatus() {
+    if (!statusEl) return;
+    const n = burger.getStack().length;
+    if (n === 0) {
+      statusEl.textContent = 'Tap Bottom to start (max 6 layers).';
+    } else if (burger.isComplete()) {
+      statusEl.textContent = 'Order complete — nice stack.';
+    } else if (n >= 6) {
+      statusEl.textContent = 'Stack full without Top — trash to restart.';
+    } else {
+      statusEl.textContent = `${n}/6 layers — finish with Top.`;
+    }
+  }
+  refreshStatus();
+
+  function punchButton(el) {
+    if (!el) return;
+    el.classList.remove('burger-ui__btn--punch');
+    void el.offsetWidth;
+    el.classList.add('burger-ui__btn--punch');
+    el.addEventListener(
+      'animationend',
+      () => el.classList.remove('burger-ui__btn--punch'),
+      { once: true },
+    );
+  }
+
+  stage.querySelectorAll('[data-ingredient]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const type = btn.getAttribute('data-ingredient');
+      const result = burger.addIngredient(type);
+      if (result.ok) {
+        punchButton(btn);
+        stackView.rebuildFromStack(burger.getStack(), { animateLast: true });
+      }
+      refreshStatus();
+    });
+  });
+
+  const trashBtn = document.getElementById('burger-trash');
+  trashBtn?.addEventListener('click', () => {
+    punchButton(trashBtn);
+    burger.reset();
+    stackView.clearFeedbacks();
+    stackView.rebuildFromStack(burger.getStack(), { animateLast: false });
+    refreshStatus();
+  });
+
   /**
    * Resize renderer and camera to match the 9:16 stage element (CSS handles letterboxing).
    */
@@ -319,6 +389,8 @@ function init() {
    */
   function tick() {
     requestAnimationFrame(tick);
+    const dt = clock.getDelta();
+    stackView.update(dt);
     renderer.render(scene, camera);
   }
 

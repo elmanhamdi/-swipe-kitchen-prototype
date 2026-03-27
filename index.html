@@ -48,6 +48,79 @@
         width: 100%;
         height: 100%;
       }
+
+      /* Overlay UI: ingredient tray (bottom). Canvas stays full-bleed behind. */
+      #burger-ui {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+      }
+
+      .burger-ui__bar {
+        pointer-events: auto;
+        padding: 10px 8px calc(10px + env(safe-area-inset-bottom, 0));
+        background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.2));
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        max-height: 38%;
+      }
+
+      .burger-ui__btn {
+        border: none;
+        border-radius: 10px;
+        padding: 10px 6px;
+        font: 600 11px/1.2 system-ui, sans-serif;
+        color: #1a1a1a;
+        background: #f4f1ea;
+        box-shadow: 0 2px 0 rgba(0, 0, 0, 0.18);
+        cursor: pointer;
+        touch-action: manipulation;
+        transition: transform 0.12s ease, filter 0.12s ease;
+      }
+
+      .burger-ui__btn:active {
+        transform: translateY(1px);
+        filter: brightness(0.94);
+      }
+
+      .burger-ui__btn--punch {
+        animation: btnPunch 0.28s ease-out;
+      }
+
+      @keyframes btnPunch {
+        0% {
+          transform: scale(1);
+        }
+        35% {
+          transform: scale(1.12);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+
+      .burger-ui__btn--trash {
+        grid-column: span 2;
+        background: #4a2d2d;
+        color: #f5e6e6;
+      }
+
+      .burger-ui__status {
+        pointer-events: none;
+        position: absolute;
+        top: 8px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font: 12px/1.3 system-ui, sans-serif;
+        color: rgba(255, 255, 255, 0.92);
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
+      }
     </style>
     <script type="importmap">
       {
@@ -60,7 +133,32 @@
   <body>
     <div id="device-frame">
       <div id="canvas-stage">
-        <!-- Renderer appends its canvas here -->
+        <div id="burger-ui" aria-label="Burger ingredients">
+          <div class="burger-ui__status" id="burger-status" aria-live="polite"></div>
+          <div class="burger-ui__bar">
+            <button type="button" class="burger-ui__btn" data-ingredient="bun_bottom" title="Bottom bun">
+              Bottom
+            </button>
+            <button type="button" class="burger-ui__btn" data-ingredient="lettuce" title="Lettuce">
+              Lettuce
+            </button>
+            <button type="button" class="burger-ui__btn" data-ingredient="tomato" title="Tomato">
+              Tomato
+            </button>
+            <button type="button" class="burger-ui__btn" data-ingredient="cheese" title="Cheese">
+              Cheese
+            </button>
+            <button type="button" class="burger-ui__btn" data-ingredient="meat" title="Patty">
+              Meat
+            </button>
+            <button type="button" class="burger-ui__btn" data-ingredient="bun_top" title="Top bun">
+              Top
+            </button>
+            <button type="button" class="burger-ui__btn burger-ui__btn--trash" id="burger-trash" title="Clear burger">
+              Trash
+            </button>
+          </div>
+        </div>
       </div>
     </div>
     <script type="module" src="./main.js"></script>
