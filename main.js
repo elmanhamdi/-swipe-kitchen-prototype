@@ -7,6 +7,8 @@ import * as THREE from 'three';
 import { Burger } from './burgerData.js';
 import { createPlate, BurgerStackView } from './burgerVisuals.js';
 import { CustomerManager } from './customerManager.js';
+import { ROOM, ZONES, halfWidthAtZ, xLeftAtZ, xRightAtZ } from './roomConstants.js';
+import { SlingshotController } from './slingshot.js';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -14,28 +16,6 @@ import { CustomerManager } from './customerManager.js';
 
 /** Container query selector (9:16 stage inside letterboxed frame). */
 const STAGE_SELECTOR = '#canvas-stage';
-
-/** Trapezoid floor: wide at front (+Z, player), narrow at back (-Z, customers). */
-const ROOM = {
-  /** Front edge Z (player area). */
-  zFront: 3.5,
-  /** Back edge Z (customer area). */
-  zBack: -4.5,
-  /** Half-width at front (X). */
-  halfWidthFront: 4.2,
-  /** Half-width at back (X). */
-  halfWidthBack: 2.6,
-  /** Wall height from floor. */
-  wallHeight: 4.2,
-};
-
-/** Z positions dividing the three floor zones (player | counter | customers). */
-const ZONES = {
-  /** Boundary between player (front) and counter (middle). */
-  playerToCounter: 1.2,
-  /** Boundary between counter (middle) and customers (back). — counter sits just behind this */
-  counterToCustomers: -1.2,
-};
 
 const COLORS = {
   floorPlayer: 0x3d4f3a,
@@ -45,23 +25,6 @@ const COLORS = {
   counterTop: 0x6b5344,
   counterFront: 0x5c4638,
 };
-
-// ---------------------------------------------------------------------------
-// Trapezoid helpers (linear interpolation along Z)
-// ---------------------------------------------------------------------------
-
-function halfWidthAtZ(z) {
-  const t = (z - ROOM.zFront) / (ROOM.zBack - ROOM.zFront);
-  return THREE.MathUtils.lerp(ROOM.halfWidthFront, ROOM.halfWidthBack, t);
-}
-
-function xLeftAtZ(z) {
-  return -halfWidthAtZ(z);
-}
-
-function xRightAtZ(z) {
-  return halfWidthAtZ(z);
-}
 
 /**
  * Builds one floor strip between zNear (closer to player, larger Z) and zFar.
@@ -338,7 +301,7 @@ function init() {
     if (n === 0) {
       statusEl.textContent = 'Tap Bottom to start (max 6 layers).';
     } else if (burger.isComplete()) {
-      statusEl.textContent = 'Order complete — nice stack.';
+      statusEl.textContent = 'Order complete — drag from burger to aim, release to throw.';
     } else if (n >= 6) {
       statusEl.textContent = 'Stack full without Top — trash to restart.';
     } else {
@@ -346,6 +309,17 @@ function init() {
     }
   }
   refreshStatus();
+
+  const slingshot = new SlingshotController({
+    camera,
+    domElement: renderer.domElement,
+    scene,
+    burger,
+    stackView,
+    stackAnchor,
+    customerManager,
+    onSettled: refreshStatus,
+  });
 
   function punchButton(el) {
     if (!el) return;
@@ -361,6 +335,7 @@ function init() {
 
   stage.querySelectorAll('[data-ingredient]').forEach((btn) => {
     btn.addEventListener('click', () => {
+      if (slingshot.isBusy()) return;
       const type = btn.getAttribute('data-ingredient');
       const result = burger.addIngredient(type);
       if (result.ok) {
@@ -373,6 +348,7 @@ function init() {
 
   const trashBtn = document.getElementById('burger-trash');
   trashBtn?.addEventListener('click', () => {
+    if (slingshot.isBusy()) return;
     punchButton(trashBtn);
     burger.reset();
     stackView.clearFeedbacks();
@@ -381,6 +357,7 @@ function init() {
   });
 
   document.getElementById('serve-btn')?.addEventListener('click', () => {
+    if (slingshot.isBusy()) return;
     if (!burger.isComplete()) {
       refreshStatus();
       return;
@@ -421,6 +398,7 @@ function init() {
     const dt = clock.getDelta();
     stackView.update(dt);
     customerManager.update(dt);
+    slingshot.update(dt);
     renderer.render(scene, camera);
   }
 

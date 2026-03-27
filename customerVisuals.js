@@ -42,6 +42,9 @@ export class CustomerView {
     this._idleTargetX = this._baseX;
     this._swayX = 0;
 
+    /** Brief flash when hit by a thrown burger. */
+    this._hitFlash = 0;
+
     this._bodyMat = createCustomerBodyMaterial(customer.state);
     /** @type {THREE.MeshStandardMaterial[]} */
     this._moodMaterials = [this._bodyMat];
@@ -79,7 +82,29 @@ export class CustomerView {
   }
 
   syncFromCustomer() {
+    if (this._hitFlash > 0.01) return;
     this._applyMoodMaterial(this.customer.state);
+  }
+
+  playHitFlash() {
+    this._hitFlash = 0.45;
+  }
+
+  /**
+   * @param {number} dt
+   */
+  updateHitFlash(dt) {
+    if (this._hitFlash <= 0) return;
+    this._hitFlash = Math.max(0, this._hitFlash - dt);
+    const w = Math.min(1, this._hitFlash * 3);
+    for (const mat of this._moodMaterials) {
+      mat.emissive.setRGB(0.35 + 0.5 * w, 0.25 + 0.45 * w, 0.15 + 0.35 * w);
+      mat.emissiveIntensity = 0.35 + 0.55 * w;
+    }
+    if (this._hitFlash <= 0.001) {
+      this._hitFlash = 0;
+      this.syncFromCustomer();
+    }
   }
 
   /**

@@ -206,6 +206,48 @@ export function getLayerHeight(type) {
 }
 
 /**
+ * @param {string[]} stack
+ * @returns {{ totalHeight: number, centerY: number }}
+ */
+export function getStackMetrics(stack) {
+  let y = 0;
+  stack.forEach((type) => {
+    const h = getLayerHeight(type);
+    y += h / 2;
+    y += h / 2 + STACK_GAP;
+  });
+  if (stack.length) y -= STACK_GAP;
+  const totalHeight = y;
+  const centerY = totalHeight > 0 ? totalHeight / 2 : 0;
+  return { totalHeight, centerY };
+}
+
+/**
+ * Single rigid group for thrown burger; origin at stack geometric center (local Y).
+ * @param {string[]} stack
+ */
+export function buildFlyingBurgerGroup(stack) {
+  const group = new THREE.Group();
+  group.name = 'FlyingBurger';
+  const { totalHeight, centerY } = getStackMetrics(stack);
+  let y = 0;
+  stack.forEach((type) => {
+    const h = getLayerHeight(type);
+    y += h / 2;
+    const layer = new THREE.Group();
+    layer.name = `Fly_${type}`;
+    const mesh = createIngredientMesh(type);
+    layer.add(mesh);
+    layer.position.y = y - centerY;
+    group.add(layer);
+    y += h / 2 + STACK_GAP;
+  });
+  group.userData.radius = 0.42;
+  group.userData.halfHeight = totalHeight / 2;
+  return group;
+}
+
+/**
  * Plate mesh in the player zone (sits on the floor).
  * @returns {THREE.Group}
  */

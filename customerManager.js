@@ -2,6 +2,7 @@
  * Spawns and updates customers (data + views), optional serve matching.
  */
 
+import * as THREE from 'three';
 import {
   Customer,
   CUSTOMER_MAX_ACTIVE,
@@ -70,6 +71,7 @@ export class CustomerManager {
   update(dt) {
     for (const e of this.entries) {
       e.customer.update(dt);
+      e.view.updateHitFlash(dt);
       e.view.syncFromCustomer();
       e.view.updateIdle(dt);
     }
@@ -88,6 +90,24 @@ export class CustomerManager {
    * @param {string[]} playerStack
    * @returns {number | null} coins awarded, or null if no match
    */
+  /**
+   * @returns {{ center: THREE.Vector3, radius: number, index: number }[]}
+   */
+  getWorldColliders() {
+    const p = new THREE.Vector3();
+    return this.entries.map((e, index) => {
+      e.view.root.getWorldPosition(p);
+      p.y += 0.82;
+      return { center: p.clone(), radius: 0.52, index };
+    });
+  }
+
+  /** @param {number} index */
+  notifyHit(index) {
+    const e = this.entries[index];
+    if (e) e.view.playHitFlash();
+  }
+
   tryServe(playerStack) {
     const order = this.entries
       .map((e, i) => ({ i, slot: e.customer.slotIndex }))
