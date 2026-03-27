@@ -4,6 +4,42 @@
 
 import * as THREE from 'three';
 
+const _driftBase = new THREE.Vector3();
+
+/**
+ * Sub-millimeter camera sway on the ScreenShake rest pose (alive, subtle).
+ */
+export class AmbientCameraDrift {
+  /**
+   * @param {ScreenShake} screenShake
+   * @param {THREE.Vector3} restPosition
+   */
+  constructor(screenShake, restPosition) {
+    this.screenShake = screenShake;
+    this._rest = restPosition.clone();
+    this._phase = Math.random() * Math.PI * 2;
+    this._reduced =
+      typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  /**
+   * @param {number} dt
+   */
+  update(dt) {
+    if (this._reduced) {
+      this.screenShake.setBase(this._rest);
+      return;
+    }
+    this._phase += dt;
+    const a = 0.026;
+    const nx = Math.sin(this._phase * 0.36) * a + Math.sin(this._phase * 0.88) * (a * 0.32);
+    const ny = Math.sin(this._phase * 0.44) * (a * 0.38);
+    const nz = Math.cos(this._phase * 0.33) * (a * 0.48);
+    _driftBase.set(this._rest.x + nx, this._rest.y + ny, this._rest.z + nz);
+    this.screenShake.setBase(_driftBase);
+  }
+}
+
 export class ScreenShake {
   /**
    * @param {THREE.PerspectiveCamera} camera

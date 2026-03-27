@@ -3,6 +3,7 @@
  */
 
 import * as THREE from 'three';
+import { GEO } from './renderQuality.js';
 
 /** Per-layer thickness (Y) and visual tuning. */
 const LAYER = {
@@ -65,7 +66,7 @@ export function createTapFeedback(layerGroup) {
 }
 
 function makeBunMesh(h, color, isTop) {
-  const geo = new THREE.CylinderGeometry(0.38, 0.4, h, 20);
+  const geo = new THREE.CylinderGeometry(0.38, 0.4, h, GEO.bunCylinder);
   const mat = new THREE.MeshStandardMaterial({
     color,
     roughness: 0.82,
@@ -75,7 +76,7 @@ function makeBunMesh(h, color, isTop) {
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   if (isTop) {
-    const seedGeo = new THREE.SphereGeometry(0.06, 8, 8);
+    const seedGeo = new THREE.SphereGeometry(0.06, GEO.seedSphere, GEO.seedSphere);
     for (let i = 0; i < 14; i++) {
       const s = new THREE.Mesh(seedGeo, mat);
       const a = (i / 14) * Math.PI * 2;
@@ -88,7 +89,7 @@ function makeBunMesh(h, color, isTop) {
 }
 
 function makePattyMesh(h, color) {
-  const geo = new THREE.CylinderGeometry(0.36, 0.37, h, 18);
+  const geo = new THREE.CylinderGeometry(0.36, 0.37, h, GEO.pattyCylinder);
   const mat = new THREE.MeshStandardMaterial({
     color,
     roughness: 0.95,
@@ -101,7 +102,7 @@ function makePattyMesh(h, color) {
 }
 
 function makeLettuceMesh(h, color) {
-  const geo = new THREE.CylinderGeometry(0.42, 0.4, h, 12);
+  const geo = new THREE.CylinderGeometry(0.42, 0.4, h, GEO.lettuceCylinder);
   const mat = new THREE.MeshStandardMaterial({
     color,
     roughness: 0.9,
@@ -114,7 +115,7 @@ function makeLettuceMesh(h, color) {
 }
 
 function makeTomatoMesh(h, color) {
-  const geo = new THREE.CylinderGeometry(0.37, 0.37, h, 18);
+  const geo = new THREE.CylinderGeometry(0.37, 0.37, h, GEO.tomatoCylinder);
   const mat = new THREE.MeshStandardMaterial({
     color,
     roughness: 0.35,
@@ -260,14 +261,14 @@ export function createPlate() {
     roughness: 0.35,
     metalness: 0.15,
   });
-  const rimGeo = new THREE.CylinderGeometry(0.58, 0.52, 0.06, 40);
+  const rimGeo = new THREE.CylinderGeometry(0.58, 0.52, 0.06, GEO.plateRim);
   const rim = new THREE.Mesh(rimGeo, dishMat);
   rim.position.y = 0.05;
   rim.castShadow = true;
   rim.receiveShadow = true;
   group.add(rim);
 
-  const innerGeo = new THREE.CylinderGeometry(0.48, 0.45, 0.04, 32);
+  const innerGeo = new THREE.CylinderGeometry(0.48, 0.45, 0.04, GEO.plateInner);
   const inner = new THREE.Mesh(innerGeo, dishMat);
   inner.position.y = 0.09;
   inner.receiveShadow = true;

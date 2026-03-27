@@ -4,6 +4,7 @@
 
 import * as THREE from 'three';
 import { buildOrderPreviewGroup, disposeObject3D } from './burgerVisuals.js';
+import { GEO } from './renderQuality.js';
 
 const MOOD_VISUAL = {
   happy: { color: 0x8fd18f, emissive: 0x224422, emissiveIntensity: 0.18 },
@@ -15,8 +16,8 @@ function createCustomerBodyMaterial(state) {
   const v = MOOD_VISUAL[state] ?? MOOD_VISUAL.neutral;
   return new THREE.MeshStandardMaterial({
     color: v.color,
-    roughness: 0.65,
-    metalness: 0.08,
+    roughness: 0.7,
+    metalness: 0.06,
     emissive: v.emissive,
     emissiveIntensity: v.emissiveIntensity,
   });
@@ -53,25 +54,35 @@ export class CustomerView {
     this._bodyMat = createCustomerBodyMaterial(customer.state);
     /** @type {THREE.MeshStandardMaterial[]} */
     this._moodMaterials = [this._bodyMat];
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.75, 6, 12), this._bodyMat);
-    body.position.y = 0.55;
-    body.castShadow = true;
-    body.receiveShadow = true;
-    body.name = 'CustomerBody';
-    this.root.add(body);
+    this._body = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.32, 0.75, GEO.capsuleRad, GEO.capsuleHeight),
+      this._bodyMat,
+    );
+    this._body.position.y = 0.55;
+    this._body.castShadow = true;
+    this._body.receiveShadow = true;
+    this._body.name = 'CustomerBody';
+    this.root.add(this._body);
 
     const headMat = this._bodyMat.clone();
     this._moodMaterials.push(headMat);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 14, 12), headMat);
-    head.position.y = 1.12;
-    head.castShadow = true;
-    head.receiveShadow = true;
-    head.name = 'CustomerHead';
-    this.root.add(head);
+    this._head = new THREE.Mesh(
+      new THREE.SphereGeometry(0.28, GEO.headSphere, GEO.headHeight),
+      headMat,
+    );
+    this._head.position.y = 1.12;
+    this._head.castShadow = true;
+    this._head.receiveShadow = true;
+    this._head.name = 'CustomerHead';
+    this.root.add(this._head);
 
+    this._orderBaseY = 1.85;
     this._orderGroup = buildOrderPreviewGroup(customer.order, 0.34);
-    this._orderGroup.position.set(0, 1.85, 0);
+    this._orderGroup.position.set(0, this._orderBaseY, 0);
     this.root.add(this._orderGroup);
+
+    this._idleSeed = Math.random() * Math.PI * 2;
+    this._idleAnimT = 0;
 
     this.root.position.set(this._baseX, 0, this._baseZ);
   }
@@ -172,6 +183,18 @@ export class CustomerView {
     }
     this.root.position.x = this._baseX + this._swayX;
     this.root.position.z = this._baseZ + Math.sin(this.customer.patienceTimer * 0.55) * 0.04;
+
+    this._idleAnimT += dt;
+    const inSquash = this._squashDur > 0;
+    if (!inSquash) {
+      const s = this._idleSeed;
+      const t = this._idleAnimT;
+      this._head.rotation.z = Math.sin(t * 1.12 + s) * 0.06;
+      this._head.rotation.x = Math.sin(t * 0.86 + s * 1.7) * 0.032;
+      this._body.rotation.z = Math.sin(t * 0.68 + s * 0.5) * 0.024;
+      this._orderGroup.position.y =
+        this._orderBaseY + Math.sin(t * 2.05 + s) * 0.045 + Math.sin(t * 3.1 + s * 2) * 0.012;
+    }
   }
 
   dispose() {
