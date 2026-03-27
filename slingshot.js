@@ -553,17 +553,15 @@ export class SlingshotController {
                 riseSpeed: 1.25,
               });
             }
-            if (result.comboAfter != null && result.comboAfter >= 2) {
-              this.floatingLayer.spawn(
-                hitAnchor.clone().add(new THREE.Vector3(0, -0.32, 0)),
-                `COMBO ×${result.comboAfter}!`,
-                '#ffd84a',
-                {
-                  className: 'floating-bonus-text--combo',
-                  riseSpeed: 1.4,
-                  duration: 1.5,
-                },
-              );
+            if (result.comboApplied != null) {
+              const comboPos = hitAnchor.clone();
+              comboPos.y += 0.52;
+              this.floatingLayer.spawn(comboPos, `×${result.comboApplied}`, '#ffd84a', {
+                className: 'floating-bonus-text--combo-serve',
+                duration: 3,
+                riseSpeed: 0.26,
+                comboPulse: true,
+              });
             }
           }
           this.juice.screenShake?.trigger(0.05);

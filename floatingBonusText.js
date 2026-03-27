@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 
 /**
- * @typedef {{ duration?: number, riseSpeed?: number, className?: string }} FloatTextOpts
+ * @typedef {{ duration?: number, riseSpeed?: number, className?: string, comboPulse?: boolean }} FloatTextOpts
  */
 
 export class FloatingBonusLayer {
@@ -16,7 +16,7 @@ export class FloatingBonusLayer {
   constructor(stageEl, camera) {
     this.stage = stageEl;
     this.camera = camera;
-    /** @type {{ el: HTMLElement, world: THREE.Vector3, rise: number, age: number, duration: number, riseSpeed: number, screenDriftY: number }[]} */
+    /** @type {{ el: HTMLElement, world: THREE.Vector3, rise: number, age: number, duration: number, riseSpeed: number, screenDriftY: number, comboPulse?: boolean }[]} */
     this._items = [];
     this._root = document.createElement('div');
     this._root.id = 'floating-bonus-layer';
@@ -46,6 +46,7 @@ export class FloatingBonusLayer {
       duration: opts.duration ?? 1.35,
       riseSpeed: opts.riseSpeed ?? 1.15,
       screenDriftY: 0,
+      comboPulse: opts.comboPulse === true,
     });
   }
 
@@ -73,10 +74,18 @@ export class FloatingBonusLayer {
       const u = it.age / it.duration;
       const opacity = Math.max(0, 1 - u * u);
 
+      let transform = 'translate(-50%, -120%)';
+      if (it.comboPulse) {
+        const pop = Math.min(1, it.age * 5.5);
+        const ease = 1 - Math.pow(1 - pop, 2.4);
+        const scale = pop < 1 ? 0.42 + 0.58 * ease : 1;
+        transform += ` scale(${scale})`;
+      }
+
       it.el.style.opacity = String(opacity);
       it.el.style.left = `${x}px`;
       it.el.style.top = `${y}px`;
-      it.el.style.transform = 'translate(-50%, -120%)';
+      it.el.style.transform = transform;
 
       if (it.age >= it.duration || v.z > 1) {
         it.el.remove();

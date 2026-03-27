@@ -85,6 +85,11 @@ function init() {
   const stackView = new BurgerStackView(stackAnchor);
   stackView.rebuildFromStack(burger.getStack(), { animateLast: false });
 
+  const debugAxes = new THREE.AxesHelper(0.75);
+  debugAxes.position.set(0, 0.52, 0);
+  debugAxes.name = 'DebugAxes';
+  playArea.add(debugAxes);
+
   const worldPickables = new WorldPickables(playArea, scene);
 
   const clock = new THREE.Clock();
@@ -93,7 +98,6 @@ function init() {
   const coinsValueEl = document.getElementById('coins-value');
   const timerEl = document.getElementById('game-timer');
   const timerBlockEl = document.getElementById('game-timer-block');
-  const comboEl = document.getElementById('game-combo');
   const gameOverOverlay = document.getElementById('game-over-overlay');
   const gameOverCoinsEl = document.getElementById('game-over-coins');
   const playAgainBtn = document.getElementById('play-again-btn');
@@ -127,7 +131,6 @@ function init() {
       timerBlockEl.classList.toggle('game-hud__timer--critical', live && s <= 5);
       timerBlockEl.classList.toggle('game-hud__timer--low', live && s <= 10 && s > 5);
     }
-    if (comboEl) comboEl.textContent = `${gameSession.combo}×`;
   }
 
   function setHudInfoVisible(show) {
@@ -196,6 +199,14 @@ function init() {
       if (gameSession.shopIsOpen) return true;
       gameSession.openShop();
       customerManager.beginGameplay();
+      worldPickables.setShopOpened(true);
+      const shopSplash = document.getElementById('shop-open-splash');
+      if (shopSplash) {
+        shopSplash.classList.remove('shop-open-splash--show');
+        void shopSplash.offsetWidth;
+        shopSplash.classList.add('shop-open-splash--show');
+        window.setTimeout(() => shopSplash.classList.remove('shop-open-splash--show'), 900);
+      }
       refreshHud();
       return true;
     }
@@ -282,6 +293,7 @@ function init() {
     debrisSystem.clear();
     slingshotRef?.resetFlightState();
     customerManager.resetGame();
+    worldPickables.setShopOpened(false);
     hudInfoModal?.classList.remove('hud-info-modal--visible');
     hudInfoModal?.setAttribute('aria-hidden', 'true');
     refreshHud();

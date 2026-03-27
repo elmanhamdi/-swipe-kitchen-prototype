@@ -293,9 +293,8 @@
         justify-self: center;
         max-width: 100%;
         display: flex;
-        flex-direction: column;
         align-items: center;
-        gap: clamp(2px, 0.6vmin, 5px);
+        justify-content: center;
         pointer-events: none;
       }
 
@@ -374,17 +373,6 @@
         50% {
           transform: scale(1.045);
         }
-      }
-
-      .game-hud__combo {
-        font: 800 clamp(10px, 2.5vmin, 12px) / 1 system-ui, sans-serif;
-        letter-spacing: 0.06em;
-        color: rgba(255, 216, 120, 0.95);
-        text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
-        padding: 3px clamp(8px, 2vmin, 11px);
-        border-radius: 999px;
-        background: rgba(0, 0, 0, 0.35);
-        border: 1px solid rgba(255, 200, 100, 0.2);
       }
 
       .game-hud__coins {
@@ -480,6 +468,51 @@
         font-size: 18px;
         font-weight: 900;
         filter: drop-shadow(0 0 10px rgba(255, 200, 80, 0.55));
+      }
+
+      .floating-bonus-text--combo-serve {
+        font-size: clamp(20px, 5.5vmin, 34px);
+        font-weight: 900;
+        letter-spacing: 0.04em;
+        filter: drop-shadow(0 0 14px rgba(255, 210, 80, 0.65)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.85));
+      }
+
+      #shop-open-splash {
+        position: absolute;
+        inset: 0;
+        z-index: 11;
+        pointer-events: none;
+        background:
+          radial-gradient(ellipse 85% 55% at 50% 36%, rgba(255, 230, 150, 0.65) 0%, transparent 58%),
+          radial-gradient(ellipse 50% 40% at 72% 48%, rgba(130, 210, 255, 0.35) 0%, transparent 50%),
+          radial-gradient(ellipse 45% 38% at 28% 52%, rgba(255, 160, 120, 0.28) 0%, transparent 48%);
+        opacity: 0;
+        visibility: hidden;
+      }
+
+      #shop-open-splash.shop-open-splash--show {
+        visibility: visible;
+        animation: shopOpenSplashAnim 0.88s ease-out forwards;
+      }
+
+      @keyframes shopOpenSplashAnim {
+        0% {
+          opacity: 0;
+          transform: scale(1.06);
+        }
+        22% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+          transform: scale(1);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #shop-open-splash.shop-open-splash--show {
+          animation-duration: 0.35s;
+        }
       }
 
       .coin-flyout {
@@ -595,6 +628,7 @@
     <div id="device-frame">
       <div id="canvas-stage">
         <div id="burger-ui" aria-label="Game UI">
+          <div id="shop-open-splash" aria-hidden="true"></div>
           <div id="game-over-overlay" aria-hidden="true">
             <div class="game-over-splash" aria-hidden="true">
               <div class="game-over-splash__burst"></div>
@@ -640,7 +674,6 @@
                     <span class="game-hud__timer-suffix" aria-hidden="true">s</span>
                   </div>
                 </div>
-                <div class="game-hud__combo" id="game-combo" aria-live="polite">1×</div>
               </div>
               <div class="game-hud__coins" id="coins-display" aria-live="polite" aria-atomic="true">
                 <span id="coins-value" class="game-hud__coins-value">0</span>

@@ -3,11 +3,15 @@
  */
 
 import * as THREE from 'three';
+import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
 import { createIngredientMesh } from './burgerVisuals.js';
 import { ROOM } from './roomConstants.js';
 
 const _ray = new THREE.Raycaster();
 const _ndc = new THREE.Vector2();
+
+const FONT_URL = 'https://unpkg.com/three@0.169.0/examples/fonts/helvetiker_bold.typeface.json';
 
 const PILE_SCALE = 0.38 * 3;
 const PILE_LAYER_Y = 0.065 * 3;
@@ -56,13 +60,12 @@ export class WorldPickables {
     rightShelf.receiveShadow = true;
     this.group.add(rightShelf);
 
-    /* Wide spacing so large piles do not overlap */
     this._addIngredientPile('lettuce', -1.88, 0.5);
     this._addIngredientPile('tomato', -1.88, -0.5);
 
-    this._addIngredientPile('cheese', 1.88, 2.5);
+    this._addIngredientPile('cheese', 1.88, 1.1);
     this._addIngredientPile('meat', 1.88, -0);
-    this._addIngredientPile('bun', 1.88, -2.5);
+    this._addIngredientPile('bun', 1.88, -1.1);
 
     const trashMat = new THREE.MeshStandardMaterial({
       color: 0x3a3a3a,
@@ -75,7 +78,7 @@ export class WorldPickables {
     );
     const trashZ = 1.38;
     const trashX = 0;
-    trash.position.set(trashX, 3, trashZ);
+    trash.position.set(trashX, 0.27 * 2, trashZ);
     trash.castShadow = true;
     trash.receiveShadow = true;
     trash.userData.isTrash = true;
@@ -92,7 +95,6 @@ export class WorldPickables {
     this.group.add(rim);
     this._meshes.push(rim);
 
-    /* “Open” — in front of back door (world space) */
     const openGroup = new THREE.Group();
     openGroup.userData.openShop = true;
     const openMat = new THREE.MeshStandardMaterial({
@@ -102,25 +104,75 @@ export class WorldPickables {
       emissive: 0x332208,
       emissiveIntensity: 0.2,
     });
-    const openBoard = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.52, 0.14), openMat);
+    const boardW = 1.95;
+    const boardH = 0.98;
+    const boardD = 0.16;
+    const openBoard = new THREE.Mesh(new THREE.BoxGeometry(boardW, boardH, boardD), openMat);
     openBoard.castShadow = true;
     openBoard.receiveShadow = true;
     openBoard.userData.openShop = true;
     openGroup.add(openBoard);
-    const legGeo = new THREE.CylinderGeometry(0.06, 0.08, 0.55, 8);
+    const legGeo = new THREE.CylinderGeometry(0.08, 0.1, 0.72, 8);
     const leg1 = new THREE.Mesh(legGeo, shelfMat);
-    leg1.position.set(-0.38, -0.48, 0);
+    leg1.position.set(-0.72, -0.58, 0);
     leg1.userData.openShop = true;
     const leg2 = new THREE.Mesh(legGeo, shelfMat);
-    leg2.position.set(0.38, -0.48, 0);
+    leg2.position.set(0.72, -0.58, 0);
     leg2.userData.openShop = true;
     openGroup.add(leg1, leg2);
-    openGroup.position.set(0, 0.92, ROOM.zBack + 0.52);
+    openGroup.position.set(0, 1.02, ROOM.zBack + 0.58);
+    openGroup.scale.setScalar(1.15);
     scene.add(openGroup);
     this._openGroup = openGroup;
     openGroup.traverse((ch) => {
       if (ch instanceof THREE.Mesh) this._meshes.push(ch);
     });
+
+    const textMat = new THREE.MeshStandardMaterial({
+      color: 0x2a1810,
+      roughness: 0.35,
+      metalness: 0.08,
+      emissive: 0x221008,
+      emissiveIntensity: 0.08,
+    });
+    const loader = new FontLoader();
+    loader.load(
+      FONT_URL,
+      (font) => {
+        const geo = new TextGeometry('OPEN', {
+          font,
+          size: 0.34,
+          depth: 0.09,
+          curveSegments: 8,
+          bevelEnabled: true,
+          bevelThickness: 0.02,
+          bevelSize: 0.015,
+          bevelSegments: 2,
+        });
+        geo.computeBoundingBox();
+        const bb = geo.boundingBox;
+        if (bb) {
+          const cx = -(bb.max.x + bb.min.x) / 2;
+          const cy = -(bb.max.y + bb.min.y) / 2;
+          geo.translate(cx, cy, 0);
+        }
+        const textMesh = new THREE.Mesh(geo, textMat);
+        textMesh.userData.openShop = true;
+        textMesh.position.set(0, 0.06, boardD / 2 + 0.12);
+        textMesh.castShadow = true;
+        openGroup.add(textMesh);
+        this._meshes.push(textMesh);
+      },
+      undefined,
+      () => {
+        /* font load failed — board still works */
+      },
+    );
+  }
+
+  /** Hide the 3D Open prop after the shop starts (show again on reset). */
+  setShopOpened(opened) {
+    if (this._openGroup) this._openGroup.visible = !opened;
   }
 
   /**

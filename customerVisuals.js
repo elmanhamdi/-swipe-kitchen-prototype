@@ -84,7 +84,37 @@ export class CustomerView {
     this._idleSeed = Math.random() * Math.PI * 2;
     this._idleAnimT = 0;
 
+    /** Satisfied bounce after correct order (before walk-out). */
+    this._celebrating = false;
+    this._celebratePhase = 0;
+
     this.root.position.set(this._baseX, 0, this._baseZ);
+  }
+
+  enterCelebrateMode() {
+    this._celebrating = true;
+    this._celebratePhase = 0;
+    this._orderGroup.visible = false;
+    this.root.scale.set(1, 1, 1);
+    this._squashDur = 0;
+  }
+
+  exitCelebrateMode() {
+    this._celebrating = false;
+    this.root.position.y = 0;
+  }
+
+  /**
+   * @param {number} dt
+   */
+  updateCelebrate(dt) {
+    if (!this._celebrating) return;
+    this._celebratePhase += dt;
+    const bounce = Math.abs(Math.sin(this._celebratePhase * Math.PI * 3.4)) * 0.14;
+    this.root.position.y = bounce;
+    const wobble = Math.sin(this._celebratePhase * Math.PI * 5.2) * 0.04;
+    this._body.rotation.z = wobble;
+    this._head.rotation.z = wobble * 1.2;
   }
 
   /** @param {import('./customerData.js').CustomerState} state */
@@ -98,6 +128,10 @@ export class CustomerView {
   }
 
   syncFromCustomer() {
+    if (this._celebrating) {
+      this._applyMoodMaterial('happy');
+      return;
+    }
     if (this._hitFlash > 0.01) return;
     this._applyMoodMaterial(this.customer.state);
   }
@@ -165,6 +199,7 @@ export class CustomerView {
    * @param {number} dt
    */
   updateIdle(dt) {
+    if (this._celebrating) return;
     if (this._idlePhase === 'wait') {
       this._idleWait -= dt;
       if (this._idleWait <= 0) {

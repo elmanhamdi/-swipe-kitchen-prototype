@@ -1,5 +1,5 @@
 /**
- * Spawns and updates customers (data + views), door entrance walk-in.
+ * Spawns and updates customers (data + views), door entrance walk-in / exit walk-out.
  */
 
 import * as THREE from 'three';
@@ -15,9 +15,23 @@ import { ROOM } from './roomConstants.js';
 /** Left / center / right slots in the back (customer) zone. */
 const SLOT_X = [-1.42, 0, 1.42];
 const SLOT_Z = -3.22;
-/** Start at door opening (walk into room). */
+/** Start at door opening (walk into / out of room). */
 const DOOR_START_Z = ROOM.zBack + 0.12;
 const WALK_DURATION = 1.25;
+const CELEBRATE_DURATION = 2;
+
+/**
+ * @typedef {'seated' | 'celebrate'} EntryPhase
+ */
+
+/**
+ * @typedef {{
+ *   customer: Customer,
+ *   view: CustomerView,
+ *   phase: EntryPhase,
+ *   celebrateT: number,
+ * }} CustomerEntry
+ */
 
 export class CustomerManager {
   /**
@@ -33,13 +47,18 @@ export class CustomerManager {
 
     /** @type {Set<number>} */
     this.usedSlots = new Set();
-    /** @type {{ customer: Customer, view: CustomerView }[]} */
+    /** @type {CustomerEntry[]} */
     this.entries = [];
 
     /** @type {{ customer: Customer, view: CustomerView, slotIndex: number }[]} */
     this._walkQueue = [];
     /** @type {null | { customer: Customer, view: CustomerView, slotIndex: number, phase: string, t: number, walkT: number }} */
     this._activeWalk = null;
+
+    /** @type {{ customer: Customer, view: CustomerView, slotIndex: number, startX: number, startZ: number, phase: string, t: number, walkT: number }[]} */
+    this._exitQueue = [];
+    /** @type {null | { customer: Customer, view: CustomerView, slotIndex: number, startX: number, startZ: number, phase: string, t: number, walkT: number }} */
+    this._activeExit = null;
 
     /** When false, no walk-ins or seated updates. */
     this._gameplayActive = false;
@@ -52,7 +71,13 @@ export class CustomerManager {
   }
 
   _totalOccupied() {
-    return this.entries.length + this._walkQueue.length + (this._activeWalk ? 1 : 0);
+    return (
+      this.entries.length +
+      this._walkQueue.length +
+      (this._activeWalk ? 1 : 0) +
+      this._exitQueue.length +
+      (this._activeExit ? 1 : 0)
+    );
   }
 
   spawnOne() {
@@ -69,7 +94,6 @@ export class CustomerManager {
     });
     const view = new CustomerView(customer);
     view.syncFromCustomer();
-    /* Begin centered at the door, then walk to slot X/Z */
     view.root.position.set(0, 0, DOOR_START_Z);
     this.group.add(view.root);
     this._walkQueue.push({ customer, view, slotIndex: slot });
@@ -100,14 +124,31 @@ export class CustomerManager {
   }
 
   /**
+   * Correct throw: celebrate at slot, then exit through door; replacement walks in after.
+   * @param {number} index
+   */
+  onSuccessfulDelivery(index) {
+    const e = this.entries[index];
+    if (!e || e.phase !== 'seated') return;
+    e.phase = 'celebrate';
+    e.celebrateT = 0;
+    e.customer.state = 'happy';
+    e.view.enterCelebrateMode();
+  }
+
+  /**
    * @param {number} dt
    */
   update(dt) {
     if (!this._gameplayActive) return;
 
+    this._updateCelebrations(dt);
     this._updateWalkIn(dt);
+    this._updateExit(dt);
+    this._tryStartDoorSequence();
 
     for (const e of this.entries) {
+      if (e.phase !== 'seated') continue;
       e.customer.update(dt);
       e.view.updateSquash(dt);
       e.view.updateHitFlash(dt);
@@ -119,40 +160,43 @@ export class CustomerManager {
   /**
    * @param {number} dt
    */
-  _updateWalkIn(dt) {
-    if (this._activeWalk) {
-      const w = this._activeWalk;
-      if (w.phase === 'door_open') {
-        w.t += dt;
-        const u = Math.min(1, w.t / 0.34);
-        this.backDoor?.setOpen(u);
-        if (w.t >= 0.34) {
-          w.phase = 'walk';
-          w.walkT = 0;
-        }
-      } else if (w.phase === 'walk') {
-        w.walkT += dt;
-        const u = Math.min(1, w.walkT / WALK_DURATION);
-        const sx = SLOT_X[w.slotIndex];
-        w.view.root.position.x = THREE.MathUtils.lerp(0, sx, u);
-        w.view.root.position.z = THREE.MathUtils.lerp(DOOR_START_Z, SLOT_Z, u);
-        if (u >= 1) {
-          w.view.root.position.x = sx;
-          w.view.root.position.z = SLOT_Z;
-          w.phase = 'door_close';
-          w.t = 0;
-        }
-      } else if (w.phase === 'door_close') {
-        w.t += dt;
-        const u = Math.max(0, 1 - w.t / 0.32);
-        this.backDoor?.setOpen(u);
-        if (w.t >= 0.32) {
-          this.backDoor?.setOpen(0);
-          this.entries.push({ customer: w.customer, view: w.view });
-          this._activeWalk = null;
-        }
+  _updateCelebrations(dt) {
+    for (let i = this.entries.length - 1; i >= 0; i--) {
+      const e = this.entries[i];
+      if (e.phase !== 'celebrate') continue;
+      e.celebrateT += dt;
+      e.view.updateCelebrate(dt);
+      e.view.syncFromCustomer();
+      if (e.celebrateT >= CELEBRATE_DURATION) {
+        const { customer, view } = e;
+        const slotIndex = customer.slotIndex;
+        const startX = view.root.position.x;
+        const startZ = view.root.position.z;
+        view.exitCelebrateMode();
+        this.entries.splice(i, 1);
+        this._exitQueue.push({ customer, view, slotIndex, startX, startZ });
       }
-    } else if (this._walkQueue.length > 0) {
+    }
+  }
+
+  _tryStartDoorSequence() {
+    if (this._activeWalk || this._activeExit) return;
+    if (this._exitQueue.length > 0) {
+      const next = this._exitQueue.shift();
+      this._activeExit = {
+        customer: next.customer,
+        view: next.view,
+        slotIndex: next.slotIndex,
+        startX: next.startX,
+        startZ: next.startZ,
+        phase: 'door_open',
+        t: 0,
+        walkT: 0,
+      };
+      this.backDoor?.setOpen(0);
+      return;
+    }
+    if (this._walkQueue.length > 0) {
       const next = this._walkQueue.shift();
       this._activeWalk = {
         customer: next.customer,
@@ -167,35 +211,118 @@ export class CustomerManager {
   }
 
   /**
+   * @param {number} dt
+   */
+  _updateWalkIn(dt) {
+    if (!this._activeWalk) return;
+    const w = this._activeWalk;
+    if (w.phase === 'door_open') {
+      w.t += dt;
+      const u = Math.min(1, w.t / 0.34);
+      this.backDoor?.setOpen(u);
+      if (w.t >= 0.34) {
+        w.phase = 'walk';
+        w.walkT = 0;
+      }
+    } else if (w.phase === 'walk') {
+      w.walkT += dt;
+      const u = Math.min(1, w.walkT / WALK_DURATION);
+      const sx = SLOT_X[w.slotIndex];
+      w.view.root.position.x = THREE.MathUtils.lerp(0, sx, u);
+      w.view.root.position.z = THREE.MathUtils.lerp(DOOR_START_Z, SLOT_Z, u);
+      w.view.root.position.y = 0;
+      if (u >= 1) {
+        w.view.root.position.x = sx;
+        w.view.root.position.z = SLOT_Z;
+        w.phase = 'door_close';
+        w.t = 0;
+      }
+    } else if (w.phase === 'door_close') {
+      w.t += dt;
+      const u = Math.max(0, 1 - w.t / 0.32);
+      this.backDoor?.setOpen(u);
+      if (w.t >= 0.32) {
+        this.backDoor?.setOpen(0);
+        this.entries.push({
+          customer: w.customer,
+          view: w.view,
+          phase: 'seated',
+          celebrateT: 0,
+        });
+        this._activeWalk = null;
+      }
+    }
+  }
+
+  /**
+   * @param {number} dt
+   */
+  _updateExit(dt) {
+    if (!this._activeExit) return;
+    const w = this._activeExit;
+    if (w.phase === 'door_open') {
+      w.t += dt;
+      const u = Math.min(1, w.t / 0.34);
+      this.backDoor?.setOpen(u);
+      if (w.t >= 0.34) {
+        w.phase = 'walk';
+        w.walkT = 0;
+      }
+    } else if (w.phase === 'walk') {
+      w.walkT += dt;
+      const u = Math.min(1, w.walkT / WALK_DURATION);
+      w.view.root.position.x = THREE.MathUtils.lerp(w.startX, 0, u);
+      w.view.root.position.z = THREE.MathUtils.lerp(w.startZ, DOOR_START_Z, u);
+      w.view.root.position.y = 0;
+      if (u >= 1) {
+        w.view.root.position.set(0, 0, DOOR_START_Z);
+        w.phase = 'door_close';
+        w.t = 0;
+      }
+    } else if (w.phase === 'door_close') {
+      w.t += dt;
+      const u = Math.max(0, 1 - w.t / 0.32);
+      this.backDoor?.setOpen(u);
+      if (w.t >= 0.32) {
+        this.backDoor?.setOpen(0);
+        this.usedSlots.delete(w.slotIndex);
+        this.group.remove(w.view.root);
+        w.view.dispose();
+        this._activeExit = null;
+        this.spawnOneIfSpace();
+      }
+    }
+  }
+
+  /**
    * @returns {{ center: THREE.Vector3, radius: number, index: number }[]}
+   * `index` is the `entries` array index (only seated customers).
    */
   getWorldColliders() {
     const p = new THREE.Vector3();
-    return this.entries.map((e, index) => {
+    const out = [];
+    for (let i = 0; i < this.entries.length; i++) {
+      const e = this.entries[i];
+      if (e.phase !== 'seated') continue;
       e.view.root.getWorldPosition(p);
       p.y += 0.82;
-      return { center: p.clone(), radius: 0.52, index };
-    });
+      out.push({ center: p.clone(), radius: 0.52, index: i });
+    }
+    return out;
   }
 
-  /** @param {number} index */
-  notifyHit(index) {
-    const e = this.entries[index];
+  /** @param {number} entryIndex */
+  notifyHit(entryIndex) {
+    const e = this.entries[entryIndex];
     if (e) e.view.playHitFlash();
   }
 
   /** Wrong-order splat: flash + big squash. */
-  notifyWrongHit(index) {
-    const e = this.entries[index];
-    if (!e) return;
+  notifyWrongHit(entryIndex) {
+    const e = this.entries[entryIndex];
+    if (!e || e.phase !== 'seated') return;
     e.view.playHitSquash('hard');
     e.view.playHitFlash();
-  }
-
-  /** Correct delivery hit feedback. */
-  notifyCorrectHit(index) {
-    const e = this.entries[index];
-    if (e) e.view.playHitSquash('light');
   }
 
   /** Play Again: clear customers; player must tap Open again. */
@@ -214,6 +341,12 @@ export class CustomerManager {
       this.group.remove(this._activeWalk.view.root);
       this._activeWalk.view.dispose();
       this._activeWalk = null;
+    }
+    this._exitQueue.length = 0;
+    if (this._activeExit) {
+      this.group.remove(this._activeExit.view.root);
+      this._activeExit.view.dispose();
+      this._activeExit = null;
     }
     this.usedSlots.clear();
     this.backDoor?.setOpen(0);

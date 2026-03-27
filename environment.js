@@ -73,15 +73,20 @@ export class BackDoor {
       roughness: 0.55,
       metalness: 0.12,
     });
-    const panelW = 0.52;
+    /** Each leaf ~2× wider than original. */
+    this._panelW = 1.04;
+    const panelW = this._panelW;
     const panelH = 2.38;
     const panelD = 0.07;
     this.leftPanel = new THREE.Mesh(new THREE.BoxGeometry(panelW, panelH, panelD), frameMat);
     this.rightPanel = new THREE.Mesh(new THREE.BoxGeometry(panelW, panelH, panelD), frameMat);
     this.leftPanel.castShadow = true;
     this.rightPanel.castShadow = true;
-    this.leftPanel.position.set(-panelW / 2 - 0.02, panelH / 2 + 0.02, 0);
-    this.rightPanel.position.set(panelW / 2 + 0.02, panelH / 2 + 0.02, 0);
+    const halfGap = 0.02;
+    this._closedLeftX = -panelW / 2 - halfGap;
+    this._closedRightX = panelW / 2 + halfGap;
+    this.leftPanel.position.set(this._closedLeftX, panelH / 2 + 0.02, 0);
+    this.rightPanel.position.set(this._closedRightX, panelH / 2 + 0.02, 0);
     this.group.add(this.leftPanel, this.rightPanel);
     this.group.position.set(0, 0, ROOM.zBack + 0.07);
     this._open = 0;
@@ -90,9 +95,9 @@ export class BackDoor {
   /** @param {number} u 0 closed — 1 open */
   setOpen(u) {
     this._open = THREE.MathUtils.clamp(u, 0, 1);
-    const slide = this._open * 0.44;
-    this.leftPanel.position.x = -0.54 - slide;
-    this.rightPanel.position.x = 0.54 + slide;
+    const slide = this._open * 0.88;
+    this.leftPanel.position.x = this._closedLeftX - slide;
+    this.rightPanel.position.x = this._closedRightX + slide;
   }
 }
 
@@ -217,8 +222,9 @@ export function buildRestaurantRoom() {
     const h = ROOM.wallHeight;
     const xl = xLeftAtZ(z);
     const xr = xRightAtZ(z);
-    const xm0 = -0.64;
-    const xm1 = 0.64;
+    /* Door opening ~2× wider to match double doors */
+    const xm0 = -1.12;
+    const xm1 = 1.12;
     addWallMesh(
       group,
       wallMat,
