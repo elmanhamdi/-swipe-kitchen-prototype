@@ -15,7 +15,8 @@ const LAYER = {
   meat: { h: 0.09, color: 0x6b4423 },
 };
 
-const STACK_GAP = 0.012;
+export const STACK_GAP = 0.028;
+const ORDER_PREVIEW_GAP = 0.012;
 
 /**
  * Squash & stretch + scale punch on a layer group (updated each frame).
@@ -161,7 +162,7 @@ export function buildOrderPreviewGroup(order, scale = 0.68) {
   root.name = 'OrderPreview';
   let y = -1;
   /* Extra air between layers so each ingredient reads clearly */
-  const gap = STACK_GAP * scale * 3.1;
+  const gap = ORDER_PREVIEW_GAP * scale;
   order.forEach((type) => {
     const rawH = getLayerHeight(type);
     const h = rawH * scale;

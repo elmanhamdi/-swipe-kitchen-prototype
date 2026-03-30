@@ -4,7 +4,7 @@
 
 import * as THREE from 'three';
 import { Burger } from './burgerData.js';
-import { createPlate, BurgerStackView } from './burgerVisuals.js';
+import { createPlate, BurgerStackView, createIngredientMesh } from './burgerVisuals.js';
 import { CustomerManager } from './customerManager.js';
 import { SlingshotController } from './slingshot.js';
 import { GameSession } from './gameCore.js';
@@ -98,6 +98,7 @@ function init() {
   const coinsValueEl = document.getElementById('coins-value');
   const timerEl = document.getElementById('game-timer');
   const timerBlockEl = document.getElementById('game-timer-block');
+  const timerBonusEl = document.getElementById('game-timer-bonus');
   const gameOverOverlay = document.getElementById('game-over-overlay');
   const gameOverCoinsEl = document.getElementById('game-over-coins');
   const playAgainBtn = document.getElementById('play-again-btn');
@@ -190,6 +191,38 @@ function init() {
 
   /** @type {import('./slingshot.js').SlingshotController | null} */
   let slingshotRef = null;
+  /** @type {{ mesh: THREE.Object3D, start: THREE.Vector3, end: THREE.Vector3, t: number, dur: number, ingredient: string }[]} */
+  const ingredientZips = [];
+
+  let timeBonusHideTimer = 0;
+  /** Inline "+0.8s" next to countdown + quick digit pulse (time already applied in GameSession). */
+  function showTimeBonusHud(seconds) {
+    refreshClockAndEconomy();
+    if (!timerEl) return;
+    const s = Math.max(0, Number(seconds));
+    if (s <= 0) return;
+    if (timerBonusEl) {
+      window.clearTimeout(timeBonusHideTimer);
+      timerBonusEl.textContent = `+${s.toFixed(1)}s`;
+      timerBonusEl.classList.remove('game-hud__timer-bonus--show');
+      void timerBonusEl.offsetWidth;
+      timerBonusEl.classList.add('game-hud__timer-bonus--show');
+      timeBonusHideTimer = window.setTimeout(() => {
+        timerBonusEl.classList.remove('game-hud__timer-bonus--show');
+        timerBonusEl.textContent = '';
+      }, 950);
+    }
+    timerEl.classList.remove('game-hud__timer-digits--bonus-pop');
+    void timerEl.offsetWidth;
+    timerEl.classList.add('game-hud__timer-digits--bonus-pop');
+    window.setTimeout(() => timerEl.classList.remove('game-hud__timer-digits--bonus-pop'), 480);
+    if (timerBlockEl) {
+      timerBlockEl.classList.remove('game-hud__timer--gain-pop');
+      void timerBlockEl.offsetWidth;
+      timerBlockEl.classList.add('game-hud__timer--gain-pop');
+      window.setTimeout(() => timerBlockEl.classList.remove('game-hud__timer--gain-pop'), 220);
+    }
+  }
 
   function pickInterceptor(e) {
     if (gameSession.gameOver) return false;
@@ -226,12 +259,31 @@ function init() {
     }
     if (pick.ingredient) {
       if (slingshotRef?.isBusy()) return true;
-      const result = burger.addIngredient(pick.ingredient);
-      if (result.ok) {
-        gameAudio.playTap();
-        stackView.rebuildFromStack(burger.getStack(), { animateLast: true });
-        if (burger.getStack().length === 1) {
-          gameSession.notifyFirstIngredientPlaced();
+      const canAdd = burger.canAddIngredient(pick.ingredient);
+      if (canAdd.ok && pick.origin) {
+        const mesh = createIngredientMesh(canAdd.resolved ?? pick.ingredient);
+        const start = pick.origin.clone();
+        start.y += 0.18;
+        mesh.position.copy(start);
+        mesh.scale.setScalar(0.74);
+        scene.add(mesh);
+        const end = new THREE.Vector3();
+        stackAnchor.getWorldPosition(end);
+        end.y += 0.22;
+        ingredientZips.push({
+          mesh,
+          start,
+          end,
+          t: 0,
+          dur: 0.2,
+          ingredient: canAdd.resolved ?? pick.ingredient,
+        });
+      } else if (canAdd.ok) {
+        const apply = burger.addIngredient(pick.ingredient);
+        if (apply.ok) {
+          gameAudio.playTap();
+          stackView.rebuildFromStack(burger.getStack(), { animateLast: true });
+          if (burger.getStack().length === 1) gameSession.notifyFirstIngredientPlaced();
         }
       }
       refreshHud();
@@ -254,6 +306,8 @@ function init() {
       screenShake,
       coinFlyout,
       coinsHudEl: coinsDisplayEl,
+      coinsValueEl,
+      onTimeBonusHud: (sec) => showTimeBonusHud(sec),
     },
     gameAudio,
     debrisSystem,
@@ -292,6 +346,10 @@ function init() {
     stackView.stackRoot.visible = true;
     debrisSystem.clear();
     slingshotRef?.resetFlightState();
+    while (ingredientZips.length) {
+      const z = ingredientZips.pop();
+      z?.mesh.removeFromParent();
+    }
     customerManager.resetGame();
     worldPickables.setShopOpened(false);
     hudInfoModal?.classList.remove('hud-info-modal--visible');
@@ -338,9 +396,31 @@ function init() {
       customerManager.update(simDt);
       slingshotRef?.update(simDt);
       floatingLayer.update(simDt);
-      coinFlyout.update(simDt);
       cameraDrift.update(simDt);
       screenShake.update(simDt);
+    }
+    coinFlyout.update(dt);
+
+    for (let i = ingredientZips.length - 1; i >= 0; i--) {
+      const z = ingredientZips[i];
+      z.t += dt;
+      const u = Math.min(1, z.t / z.dur);
+      const e = 1 - (1 - u) ** 3;
+      const p = z.start.clone().lerp(z.end, e);
+      p.y += Math.sin(u * Math.PI) * 0.18;
+      z.mesh.position.copy(p);
+      z.mesh.rotation.y += dt * 18;
+      if (u >= 1) {
+        z.mesh.removeFromParent();
+        const apply = burger.addIngredient(z.ingredient);
+        if (apply.ok) {
+          gameAudio.playTap();
+          stackView.rebuildFromStack(burger.getStack(), { animateLast: true });
+          if (burger.getStack().length === 1) gameSession.notifyFirstIngredientPlaced();
+        }
+        ingredientZips.splice(i, 1);
+        refreshHud();
+      }
     }
 
     debrisSystem.update(dt);

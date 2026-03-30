@@ -15,6 +15,25 @@ export const FAST_BUILD_MAX_SEC = 4;
 /** INSANE: throw in air longer than this (exclusive) to qualify. */
 export const INSANE_AIR_MIN_SEC = 3;
 
+/**
+ * Time gain mechanic (demo):
+ * Include buns; based purely on ingredient count.
+ * 1st = +0.1s, 2nd = +0.2s, 3rd+ = +0.3s each (per-ingredient cap 0.5s).
+ * @param {number} ingredientCount
+ */
+export function computeServeTimeBonusSeconds(ingredientCount) {
+  const n = Math.max(0, Math.floor(ingredientCount));
+  let s = 0;
+  for (let i = 1; i <= n; i++) {
+    let b = 0.3;
+    if (i === 1) b = 0.1;
+    else if (i === 2) b = 0.2;
+    b = Math.min(0.5, Math.max(0, b));
+    s += b;
+  }
+  return s;
+}
+
 export class GameSession {
   constructor() {
     this.timeLeft = START_TIME_SECONDS;
@@ -91,7 +110,8 @@ export class GameSession {
     const stackedThrowCoins = tb * mult;
     const earned = Math.floor(baseReward * mult) + stackedThrowCoins + extraBonuses + maxComboBonus;
     this.totalCoins += earned;
-    this.timeLeft += TIME_BONUS_CORRECT_DELIVERY;
+    // Demo mechanic replaces flat TIME_BONUS_CORRECT_DELIVERY.
+    // (Kept exported constant for now to avoid breaking imports.)
     this.combo = Math.min(COMBO_MAX, this.combo + 1);
     return { earned, comboAfter: this.combo, comboApplied: mult };
   }
@@ -101,7 +121,7 @@ export class GameSession {
    * @param {string[]} thrownStack
    * @param {number} entryIndex index into customerManager.entries
    * @param {import('./customerManager.js').CustomerManager} customerManager
-   * @returns {{ correct: boolean, fast?: boolean, insane?: boolean, earned?: number, comboAfter?: number, comboApplied?: number }}
+   * @returns {{ correct: boolean, fast?: boolean, insane?: boolean, earned?: number, comboAfter?: number, comboApplied?: number, timeBonus?: number }}
    */
   resolveThrowVsCustomer(thrownStack, entryIndex, customerManager) {
     const entry = customerManager.entries[entryIndex];
@@ -123,8 +143,10 @@ export class GameSession {
 
       const base = entry.customer.getCoinReward();
       const { earned, comboAfter, comboApplied } = this.applyCorrectDelivery(base, 0, { fast, insane });
+      const timeBonus = computeServeTimeBonusSeconds(thrownStack.length);
+      this.timeLeft += timeBonus;
       customerManager.onSuccessfulDelivery(entryIndex);
-      return { correct: true, fast, insane, earned, comboAfter, comboApplied };
+      return { correct: true, fast, insane, earned, comboAfter, comboApplied, timeBonus };
     }
 
     this.onComboBreakEvent();

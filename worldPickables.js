@@ -60,12 +60,13 @@ export class WorldPickables {
     rightShelf.receiveShadow = true;
     this.group.add(rightShelf);
 
-    this._addIngredientPile('lettuce', -1.88, 0.5);
-    this._addIngredientPile('tomato', -1.88, -0.5);
+    // Demo: fewer ingredients, more breathing room (removed tomato).
+    this._addIngredientPile('lettuce', -2.0, 1.05);
+    this._addIngredientPile('tomato', -2.0, -0.05);
 
-    this._addIngredientPile('cheese', 1.88, 1.1);
-    this._addIngredientPile('meat', 1.88, -0);
-    this._addIngredientPile('bun', 1.88, -1.1);
+    this._addIngredientPile('cheese', 2.0, 0.9);
+    this._addIngredientPile('meat', 2.0, -0.1);
+    this._addIngredientPile('bun', 2.0, -1.1);
 
     const trashMat = new THREE.MeshStandardMaterial({
       color: 0xf2f0ec,
@@ -203,7 +204,7 @@ export class WorldPickables {
    * @param {number} clientY
    * @param {THREE.Camera} camera
    * @param {HTMLElement} domElement
-   * @returns {{ trash?: boolean, ingredient?: string, openShop?: boolean } | null}
+   * @returns {{ trash?: boolean, ingredient?: string, openShop?: boolean, origin?: THREE.Vector3 } | null}
    */
   tryPick(clientX, clientY, camera, domElement) {
     const rect = domElement.getBoundingClientRect();
@@ -217,7 +218,11 @@ export class WorldPickables {
     if (!info) return null;
     if (info.kind === 'open') return { openShop: true };
     if (info.kind === 'trash') return { trash: true };
-    if (info.kind === 'ingredient') return { ingredient: info.type };
+    if (info.kind === 'ingredient') {
+      const origin = new THREE.Vector3();
+      info.root.getWorldPosition(origin);
+      return { ingredient: info.type, origin };
+    }
     return null;
   }
 }

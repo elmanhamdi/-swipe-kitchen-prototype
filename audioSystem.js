@@ -19,6 +19,8 @@ export const AUDIO_LEVELS = {
   wrongSplat: 0.68,
   missThud: 0.32,
   trash: 0.52,
+  timeGain: 0.46,
+  coinTick: 0.48,
 };
 
 /**
@@ -161,6 +163,89 @@ function createFunkyLoopBuffer(ctx, durationSec = 2.4) {
   return buffer;
 }
 
+/**
+ * More "gamey" / less harsh music loop (~3.2s).
+ * - lighter percussion (less noise)
+ * - simple major pentatonic melody + soft bass
+ * - avoids piercing highs to reduce listener fatigue
+ */
+function createBouncyLoopBuffer(ctx, durationSec = 3.2) {
+  const sr = ctx.sampleRate;
+  const n = Math.floor(sr * durationSec);
+  const buffer = ctx.createBuffer(2, n, sr);
+  const bpm = 118;
+  const beatDur = 60 / bpm;
+
+  // C major pentatonic-ish set (C D E G A) around middle C.
+  const scale = [261.63, 293.66, 329.63, 392.0, 440.0];
+  const melodySteps = [0, 2, 1, 3, 2, 4, 3, 1];
+  const bassSteps = [0, 0, 3, 0, 4, 0, 3, 0];
+
+  // Simple 8th-note grid.
+  const stepDur = beatDur / 2;
+  const stepCount = Math.max(1, Math.floor(durationSec / stepDur));
+
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buffer.getChannelData(ch);
+    const pan = ch === 0 ? 0.96 : 1.04;
+
+    let melPhase = 0;
+    let bassPhase = 0;
+
+    for (let i = 0; i < n; i++) {
+      const t = i / sr;
+      const step = Math.floor(t / stepDur) % stepCount;
+      const u = (t / stepDur) % 1; // 0..1 within step
+
+      // Note envelopes (fast attack, short decay).
+      const env = Math.min(1, u * 18) * Math.exp(-u * 6.5);
+      const envSoft = Math.min(1, u * 10) * Math.exp(-u * 3.2);
+
+      const melIdx = melodySteps[step % melodySteps.length];
+      const bassIdx = bassSteps[step % bassSteps.length];
+
+      // Slightly vary octaves to keep it playful.
+      const melOct = step % 8 === 7 ? 2 : 1;
+      const melFreq = scale[melIdx] * melOct;
+      const bassFreq = (scale[bassIdx] / 2) * (step % 4 === 2 ? 1.0 : 0.5);
+
+      melPhase += (2 * Math.PI * melFreq) / sr;
+      bassPhase += (2 * Math.PI * bassFreq) / sr;
+
+      // Soft bass (sine + tiny 2nd harmonic).
+      let s = 0;
+      s += 0.16 * pan * envSoft * (Math.sin(bassPhase) + 0.18 * Math.sin(bassPhase * 2));
+
+      // Melody (triangle-ish via harmonics; kept gentle).
+      const tri =
+        0.68 * Math.sin(melPhase) +
+        0.22 * Math.sin(melPhase * 3) +
+        0.10 * Math.sin(melPhase * 5);
+      s += 0.11 * pan * env * tri;
+
+      // Light kick on beats 0 and 2.
+      const beat = t / beatDur;
+      const beatPhase = beat % 1;
+      const beatStep = Math.floor(beat) % 4;
+      if ((beatStep === 0 || beatStep === 2) && beatPhase < 0.12) {
+        const kenv = Math.sin((beatPhase / 0.12) * Math.PI) * (1 - beatPhase / 0.12);
+        s += 0.09 * pan * kenv * Math.sin(2 * Math.PI * (95 - beatPhase * 420) * t);
+      }
+
+      // Very light hat ticks (reduced noise; short).
+      if (beatPhase > 0.48 && beatPhase < 0.52) {
+        const hn = (Math.random() * 2 - 1);
+        const henv = 1 - Math.abs((beatPhase - 0.5) / 0.02);
+        s += 0.012 * pan * hn * henv;
+      }
+
+      // Gentle limiter.
+      d[i] = Math.max(-1, Math.min(1, s * 0.92));
+    }
+  }
+  return buffer;
+}
+
 /** Short cheerful “time up” sting. */
 function createTimeUpBuffer(ctx, durationSec = 0.52) {
   const sr = ctx.sampleRate;
@@ -176,6 +261,23 @@ function createTimeUpBuffer(ctx, durationSec = 0.52) {
       const st = k * 0.09;
       if (t >= st) s += Math.sin(2 * Math.PI * f * (t - st)) * (0.12 - k * 0.018);
     });
+    d[i] = s * env;
+  }
+  return buffer;
+}
+
+/** Tiny positive blip for gained seconds. */
+function createTimeGainBuffer(ctx, durationSec = 0.16) {
+  const sr = ctx.sampleRate;
+  const n = Math.floor(sr * durationSec);
+  const buffer = ctx.createBuffer(1, n, sr);
+  const d = buffer.getChannelData(0);
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const env = Math.exp(-t * 14) * (1 - t / durationSec);
+    const s =
+      Math.sin(2 * Math.PI * 880 * t) * 0.22 +
+      Math.sin(2 * Math.PI * 1320 * t) * 0.11;
     d[i] = s * env;
   }
   return buffer;
@@ -210,6 +312,7 @@ export class GameAudio {
     this._trash = null;
     /** @type {THREE.Audio | null} */
     this._timeUp = null;
+    this._timeGain = null;
     /** @type {THREE.Audio | null} */
     this._music = null;
     this._musicStarted = false;
@@ -233,11 +336,12 @@ export class GameAudio {
       wrongSplat: createSplatBuffer(ctx),
       missThud: createThudBuffer(ctx),
       trash: createTrashBuffer(ctx),
-      funk: createFunkyLoopBuffer(ctx),
+      funk: createBouncyLoopBuffer(ctx),
       timeUp: createTimeUpBuffer(ctx),
+      timeGain: createTimeGainBuffer(ctx),
     };
 
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 6; i++) {
       const a = new THREE.Audio(this.listener);
       a.setBuffer(this._buffers.tap);
       this._tapPool.push(a);
@@ -260,6 +364,8 @@ export class GameAudio {
 
     this._timeUp = new THREE.Audio(this.listener);
     this._timeUp.setBuffer(this._buffers.timeUp);
+    this._timeGain = new THREE.Audio(this.listener);
+    this._timeGain.setBuffer(this._buffers.timeGain);
 
     this._music = new THREE.Audio(this.listener);
     this._music.setBuffer(this._buffers.funk);
@@ -325,6 +431,14 @@ export class GameAudio {
     playOneShot(a, this._sfxVol('tap'));
   }
 
+  /** Short coin stack tick (shares tap buffer, different gain). */
+  playCoinTick() {
+    if (!this._tapPool.length) return;
+    const a = this._tapPool[this._tapIdx % this._tapPool.length];
+    this._tapIdx++;
+    playOneShot(a, this._sfxVol('coinTick'));
+  }
+
   playThrow() {
     playOneShot(this._throw, this._sfxVol('throw'));
   }
@@ -347,5 +461,9 @@ export class GameAudio {
 
   playTimeUp() {
     playOneShot(this._timeUp, this._sfxVol('timeUp'));
+  }
+
+  playTimeGain() {
+    playOneShot(this._timeGain, this._sfxVol('timeGain'));
   }
 }

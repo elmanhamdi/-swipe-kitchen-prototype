@@ -18,24 +18,24 @@ export class Burger {
     this._ingredients = [];
   }
 
-  /**
-   * @param {string} type — use `bun` for unified bottom/top; or canonical ids.
-   * @returns {{ ok: boolean, reason?: string }}
-   */
-  addIngredient(type) {
+  _resolveType(type) {
     let resolved = type;
     if (type === 'bun') {
-      if (this._ingredients.length === 0) {
-        resolved = 'bun_bottom';
-      } else if (this._isSealed()) {
-        return { ok: false, reason: 'already_complete' };
-      } else {
-        resolved = 'bun_top';
-      }
+      if (this._ingredients.length === 0) resolved = 'bun_bottom';
+      else if (this._isSealed()) return { ok: false, reason: 'already_complete' };
+      else resolved = 'bun_top';
     }
+    return { ok: true, resolved };
+  }
 
+  _validateResolvedType(resolved) {
     if (!INGREDIENT_TYPES.includes(resolved)) {
       return { ok: false, reason: 'unknown_type' };
+    }
+    // Demo: keep stacks simple and readable — no duplicate ingredients.
+    // (Also prevents patterns like meat→meat.)
+    if (this._ingredients.includes(resolved)) {
+      return { ok: false, reason: 'duplicate_ingredient' };
     }
     if (this._ingredients.length >= 6) {
       return { ok: false, reason: 'max_layers' };
@@ -55,8 +55,29 @@ export class Burger {
     if (resolved === 'bun_top' && this._ingredients[0] !== 'bun_bottom') {
       return { ok: false, reason: 'need_bun_bottom_first' };
     }
+    return { ok: true };
+  }
 
-    this._ingredients.push(resolved);
+  /**
+   * @param {string} type
+   * @returns {{ ok: boolean, reason?: string, resolved?: string }}
+   */
+  canAddIngredient(type) {
+    const resolved = this._resolveType(type);
+    if (!resolved.ok) return resolved;
+    const valid = this._validateResolvedType(resolved.resolved);
+    if (!valid.ok) return valid;
+    return { ok: true, resolved: resolved.resolved };
+  }
+
+  /**
+   * @param {string} type — use `bun` for unified bottom/top; or canonical ids.
+   * @returns {{ ok: boolean, reason?: string }}
+   */
+  addIngredient(type) {
+    const check = this.canAddIngredient(type);
+    if (!check.ok || !check.resolved) return { ok: false, reason: check.reason ?? 'invalid' };
+    this._ingredients.push(check.resolved);
     return { ok: true };
   }
 

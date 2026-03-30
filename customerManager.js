@@ -5,7 +5,6 @@
 import * as THREE from 'three';
 import {
   Customer,
-  CUSTOMER_MAX_ACTIVE,
   generateCustomerOrder,
   pickRandomFreeSlot,
 } from './customerData.js';
@@ -17,8 +16,11 @@ const SLOT_X = [-1.42, 0, 1.42];
 const SLOT_Z = -3.22;
 /** Start at door opening (walk into / out of room). */
 const DOOR_START_Z = ROOM.zBack + 0.12;
-const WALK_DURATION = 1.25;
+const WALK_DURATION = 0.68;
 const CELEBRATE_DURATION = 2;
+const BASE_ACTIVE_CUSTOMERS = 1;
+const RAMP_INTERVAL_SEC = 10;
+const RAMP_MAX_CUSTOMERS = 3;
 
 /**
  * @typedef {'seated' | 'celebrate'} EntryPhase
@@ -62,12 +64,19 @@ export class CustomerManager {
 
     /** When false, no walk-ins or seated updates. */
     this._gameplayActive = false;
+    this._gameplayElapsed = 0;
   }
 
   /** Call when player taps Open — starts spawning / walk-ins. */
   beginGameplay() {
     this._gameplayActive = true;
+    this._gameplayElapsed = 0;
     this.fillToMax();
+  }
+
+  _desiredMaxCustomers() {
+    const ramped = BASE_ACTIVE_CUSTOMERS + Math.floor(this._gameplayElapsed / RAMP_INTERVAL_SEC);
+    return Math.min(RAMP_MAX_CUSTOMERS, Math.max(1, ramped));
   }
 
   _totalOccupied() {
@@ -82,9 +91,14 @@ export class CustomerManager {
 
   spawnOne() {
     if (!this._gameplayActive) return;
-    if (this._totalOccupied() >= CUSTOMER_MAX_ACTIVE) return;
-    const slot = pickRandomFreeSlot(this.usedSlots);
-    if (slot === null) return;
+    if (this._totalOccupied() >= this._desiredMaxCustomers()) return;
+    // Start centered while one customer is active, then expand as difficulty ramps.
+    let slot = 1;
+    if (this._desiredMaxCustomers() > 1 || this.usedSlots.has(slot)) {
+      const maybe = pickRandomFreeSlot(this.usedSlots);
+      if (maybe === null) return;
+      slot = maybe;
+    }
 
     this.usedSlots.add(slot);
     const customer = new Customer({
@@ -100,7 +114,7 @@ export class CustomerManager {
   }
 
   fillToMax() {
-    while (this._totalOccupied() < CUSTOMER_MAX_ACTIVE) {
+    while (this._totalOccupied() < this._desiredMaxCustomers()) {
       this.spawnOne();
     }
   }
@@ -118,7 +132,7 @@ export class CustomerManager {
   }
 
   spawnOneIfSpace() {
-    if (this._totalOccupied() < CUSTOMER_MAX_ACTIVE) {
+    if (this._totalOccupied() < this._desiredMaxCustomers()) {
       this.spawnOne();
     }
   }
@@ -141,6 +155,8 @@ export class CustomerManager {
    */
   update(dt) {
     if (!this._gameplayActive) return;
+    this._gameplayElapsed += dt;
+    this.fillToMax();
 
     this._updateCelebrations(dt);
     this._updateWalkIn(dt);
@@ -218,9 +234,9 @@ export class CustomerManager {
     const w = this._activeWalk;
     if (w.phase === 'door_open') {
       w.t += dt;
-      const u = Math.min(1, w.t / 0.34);
+      const u = Math.min(1, w.t / 0.18);
       this.backDoor?.setOpen(u);
-      if (w.t >= 0.34) {
+      if (w.t >= 0.18) {
         w.phase = 'walk';
         w.walkT = 0;
       }
@@ -239,9 +255,9 @@ export class CustomerManager {
       }
     } else if (w.phase === 'door_close') {
       w.t += dt;
-      const u = Math.max(0, 1 - w.t / 0.32);
+      const u = Math.max(0, 1 - w.t / 0.18);
       this.backDoor?.setOpen(u);
-      if (w.t >= 0.32) {
+      if (w.t >= 0.18) {
         this.backDoor?.setOpen(0);
         this.entries.push({
           customer: w.customer,
@@ -262,9 +278,9 @@ export class CustomerManager {
     const w = this._activeExit;
     if (w.phase === 'door_open') {
       w.t += dt;
-      const u = Math.min(1, w.t / 0.34);
+      const u = Math.min(1, w.t / 0.18);
       this.backDoor?.setOpen(u);
-      if (w.t >= 0.34) {
+      if (w.t >= 0.18) {
         w.phase = 'walk';
         w.walkT = 0;
       }
@@ -281,9 +297,9 @@ export class CustomerManager {
       }
     } else if (w.phase === 'door_close') {
       w.t += dt;
-      const u = Math.max(0, 1 - w.t / 0.32);
+      const u = Math.max(0, 1 - w.t / 0.18);
       this.backDoor?.setOpen(u);
-      if (w.t >= 0.32) {
+      if (w.t >= 0.18) {
         this.backDoor?.setOpen(0);
         this.usedSlots.delete(w.slotIndex);
         this.group.remove(w.view.root);
@@ -351,5 +367,6 @@ export class CustomerManager {
     this.usedSlots.clear();
     this.backDoor?.setOpen(0);
     this._gameplayActive = false;
+    this._gameplayElapsed = 0;
   }
 }

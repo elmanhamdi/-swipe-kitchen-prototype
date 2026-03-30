@@ -135,7 +135,7 @@ export class SlingshotController {
    * @param {import('./customerManager.js').CustomerManager} o.customerManager
    * @param {import('./gameCore.js').GameSession} o.gameSession
    * @param {import('./floatingBonusText.js').FloatingBonusLayer} [o.floatingLayer]
-   * @param {{ screenShake?: import('./juiceSystems.js').ScreenShake, coinFlyout?: import('./juiceSystems.js').CoinFlyoutLayer, coinsHudEl?: HTMLElement | null }} [o.juice]
+   * @param {{ screenShake?: import('./juiceSystems.js').ScreenShake, coinFlyout?: import('./juiceSystems.js').CoinFlyoutLayer, coinsHudEl?: HTMLElement | null, coinsValueEl?: HTMLElement | null, onTimeBonusHud?: (seconds: number) => void }} [o.juice]
    * @param {import('./audioSystem.js').GameAudio | null} [o.gameAudio]
    * @param {import('./burgerDebris.js').BurgerDebrisSystem | null} [o.debrisSystem]
    * @param {(e: PointerEvent) => boolean} [o.pickInterceptor] return true if event consumed (no aim)
@@ -532,12 +532,23 @@ export class SlingshotController {
         if (result.correct) {
           const coinPos = hitAnchor.clone();
           coinPos.y -= 0.5;
-          this.juice.coinFlyout?.spawnBurst(
+          this.juice.coinFlyout?.spawnGainText(
             coinPos,
             this.camera,
-            this.juice.coinsHudEl ?? null,
+            this.juice.coinsValueEl ?? this.juice.coinsHudEl ?? null,
             result.earned ?? 1,
           );
+          const earnedCoins = Math.max(0, Math.floor(result.earned ?? 0));
+          if (earnedCoins > 0 && this.gameAudio) {
+            const n = Math.min(10, earnedCoins);
+            const ga = this.gameAudio;
+            for (let k = 0; k < n; k++) {
+              window.setTimeout(() => ga.playCoinTick(), k * 45);
+            }
+          }
+          if ((result.timeBonus ?? 0) > 0) {
+            this.juice.onTimeBonusHud?.(result.timeBonus);
+          }
           if (this.floatingLayer && hitEntry) {
             if (result.fast) {
               this.floatingLayer.spawn(hitAnchor.clone(), 'FAST!', '#8fffac', {
@@ -566,6 +577,7 @@ export class SlingshotController {
           }
           this.juice.screenShake?.trigger(0.05);
           this.gameAudio?.playCorrect();
+          if ((result.timeBonus ?? 0) > 0) this.gameAudio?.playTimeGain();
           this._finishThrow();
         } else {
           const facePos = new THREE.Vector3();

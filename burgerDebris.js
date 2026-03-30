@@ -3,7 +3,7 @@
  */
 
 import * as THREE from 'three';
-import { createIngredientMesh, disposeObject3D, getLayerHeight } from './burgerVisuals.js';
+import { createIngredientMesh, disposeObject3D, getLayerHeight, STACK_GAP } from './burgerVisuals.js';
 import { getCounterAabb, hitsFloor, resolveWalls } from './roomCollisions.js';
 
 const GRAVITY = new THREE.Vector3(0, -32, 0);
@@ -40,7 +40,7 @@ export class BurgerDebrisSystem {
   spawnFromStack(stack, worldCenter, wallNormal = null) {
     if (!stack.length) return;
     let y = 0;
-    const gap = 0.012;
+    const gap = STACK_GAP;
     stack.forEach((type) => {
       const h = getLayerHeight(type);
       y += h / 2;

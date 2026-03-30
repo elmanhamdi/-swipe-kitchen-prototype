@@ -4,33 +4,22 @@
 
 /** @typedef {'happy' | 'neutral' | 'angry'} CustomerState */
 
-export const CUSTOMER_MAX_ACTIVE = 3;
+export const CUSTOMER_MAX_ACTIVE = 1;
 
 export const REWARD_COINS_HAPPY = 2;
 export const REWARD_COINS_OTHER = 1;
 
-const MIDDLE = ['lettuce', 'tomato', 'cheese', 'meat'];
-
-/**
- * Valid random order: 4–6 ingredients, bun_bottom … bun_top.
- * 4 layers → two middle fillers, all distinct.
- * 5–6 layers → middle fillers may repeat.
- * @returns {string[]}
- */
 export function generateCustomerOrder() {
-  const totalLen = 4 + Math.floor(Math.random() * 3);
-  const middleCount = totalLen - 2;
-  /** @type {string[]} */
-  const middle = [];
+  // Demo-simple orders: only two base variants (cheese vs no-cheese),
+  // with optional lettuce for a tiny bit of variety (no duplicates).
+  const wantCheese = Math.random() < 0.5;
+  const veggieRoll = Math.random();
 
-  if (totalLen === 4) {
-    const pool = [...MIDDLE].sort(() => Math.random() - 0.5);
-    middle.push(pool[0], pool[1]);
-  } else {
-    for (let i = 0; i < middleCount; i++) {
-      middle.push(MIDDLE[Math.floor(Math.random() * MIDDLE.length)]);
-    }
-  }
+  /** @type {string[]} */
+  const middle = ['meat'];
+  if (wantCheese) middle.push('cheese');
+  if (veggieRoll < 0.2) middle.push('lettuce');
+  else if (veggieRoll < 0.4) middle.push('tomato');
 
   return ['bun_bottom', ...middle, 'bun_top'];
 }

@@ -326,6 +326,48 @@
         display: flex;
         align-items: baseline;
         gap: 1px;
+        flex-wrap: nowrap;
+        justify-content: center;
+      }
+
+      .game-hud__timer-bonus {
+        margin-left: 0.28em;
+        font: 800 clamp(0.65rem, 2.4vmin, 0.9rem) / 1 system-ui, sans-serif;
+        color: #8fffd3;
+        letter-spacing: 0.02em;
+        text-shadow: 0 0 10px rgba(90, 255, 200, 0.45);
+        opacity: 0;
+        transform: scale(0.88);
+        transition:
+          opacity 0.12s ease-out,
+          transform 0.12s ease-out;
+        pointer-events: none;
+        white-space: nowrap;
+      }
+
+      .game-hud__timer-bonus--show {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      .game-hud__timer-digits--bonus-pop {
+        display: inline-block;
+        animation: hudTimerDigitBonusPop 0.45s ease-out;
+      }
+
+      @keyframes hudTimerDigitBonusPop {
+        0% {
+          transform: scale(1);
+        }
+        35% {
+          transform: scale(1.12);
+        }
+        65% {
+          transform: scale(0.96);
+        }
+        100% {
+          transform: scale(1);
+        }
       }
 
       .game-hud__timer-digits {
@@ -372,6 +414,26 @@
         }
         50% {
           transform: scale(1.045);
+        }
+      }
+
+      .game-hud__timer--gain-pop {
+        animation: hudTimerGainPop 0.22s ease-out;
+        box-shadow:
+          0 4px 24px rgba(0, 0, 0, 0.35),
+          0 0 0 1px rgba(130, 255, 215, 0.4) inset,
+          0 0 18px rgba(90, 255, 200, 0.26);
+      }
+
+      @keyframes hudTimerGainPop {
+        0% {
+          transform: scale(1);
+        }
+        40% {
+          transform: scale(1.07);
+        }
+        100% {
+          transform: scale(1);
         }
       }
 
@@ -526,6 +588,18 @@
         will-change: transform, opacity;
       }
 
+      .coin-gain-flyout {
+        position: absolute;
+        left: 0;
+        top: 0;
+        font: 800 clamp(1rem, 4.2vmin, 1.35rem) / 1 system-ui, sans-serif;
+        color: #ffd84a;
+        letter-spacing: 0.02em;
+        pointer-events: none;
+        filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.55));
+        will-change: transform, opacity;
+      }
+
       /* Bottom-left how-to-play (pauses timer while open) */
       .hud-info-btn {
         position: absolute;
@@ -672,6 +746,7 @@
                   <div class="game-hud__timer-count">
                     <span id="game-timer" class="game-hud__timer-digits">45</span>
                     <span class="game-hud__timer-suffix" aria-hidden="true">s</span>
+                    <span id="game-timer-bonus" class="game-hud__timer-bonus" aria-hidden="true"></span>
                   </div>
                 </div>
               </div>
