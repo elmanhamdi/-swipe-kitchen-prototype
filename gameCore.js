@@ -4,6 +4,7 @@
 
 export const START_TIME_SECONDS = 45;
 export const TIME_BONUS_CORRECT_DELIVERY = 5;
+export const TIME_BONUS_PER_SUCCESSFUL_DELIVERY = 2;
 export const COMBO_MAX = 3;
 
 /** Optional flat bonus when scoring at max multiplier (before combo steps up). */
@@ -45,6 +46,7 @@ export class GameSession {
     /** 1, 2, or 3 — applies to the *current* delivery, then steps up on success. */
     this.combo = 1;
     this.totalCoins = 0;
+    this.customersServed = 0;
 
     /** performance.now() when current burger got its first ingredient; null = idle / cleared. */
     this._burgerBuildStartMs = null;
@@ -110,8 +112,7 @@ export class GameSession {
     const stackedThrowCoins = tb * mult;
     const earned = Math.floor(baseReward * mult) + stackedThrowCoins + extraBonuses + maxComboBonus;
     this.totalCoins += earned;
-    // Demo mechanic replaces flat TIME_BONUS_CORRECT_DELIVERY.
-    // (Kept exported constant for now to avoid breaking imports.)
+    this.customersServed++;
     this.combo = Math.min(COMBO_MAX, this.combo + 1);
     return { earned, comboAfter: this.combo, comboApplied: mult };
   }
@@ -143,7 +144,7 @@ export class GameSession {
 
       const base = entry.customer.getCoinReward();
       const { earned, comboAfter, comboApplied } = this.applyCorrectDelivery(base, 0, { fast, insane });
-      const timeBonus = computeServeTimeBonusSeconds(thrownStack.length);
+      const timeBonus = TIME_BONUS_PER_SUCCESSFUL_DELIVERY + computeServeTimeBonusSeconds(thrownStack.length);
       this.timeLeft += timeBonus;
       customerManager.onSuccessfulDelivery(entryIndex);
       return { correct: true, fast, insane, earned, comboAfter, comboApplied, timeBonus };
@@ -180,6 +181,7 @@ export class GameSession {
     this.hudInfoOpen = false;
     this.combo = 1;
     this.totalCoins = 0;
+    this.customersServed = 0;
     this._burgerBuildStartMs = null;
     this._throwAirStartMs = null;
   }

@@ -22,6 +22,7 @@ const INGREDIENT_TEXTURE_PATHS = {
   lettuce: './assets/textures/ingredients/lettuce.png',
   tomato: './assets/textures/ingredients/tomato.png',
   cheese: './assets/textures/ingredients/cheese.png',
+  meat: './assets/textures/ingredients/meat-patty.png',
 };
 
 const _textureLoader = new THREE.TextureLoader();
@@ -173,12 +174,33 @@ function makeBunMesh(h, color, isTop) {
 
 function makePattyMesh(h, color) {
   const geo = new THREE.CylinderGeometry(0.36, 0.37, h, GEO.pattyCylinder);
-  const mat = new THREE.MeshStandardMaterial({
+  const sideMat = makeIngredientMaterial({
     color,
     roughness: 0.95,
     metalness: 0,
+    emissive: 0x221109,
+    emissiveIntensity: 0.06,
   });
-  const mesh = new THREE.Mesh(geo, mat);
+  const topMat = makeIngredientMaterial({
+    color: 0xffffff,
+    roughness: 0.88,
+    metalness: 0,
+    map: cloneIngredientTexture('meat'),
+    emissive: 0x3b1d12,
+    emissiveIntensity: 0.08,
+  });
+  const bottomMap = cloneIngredientTexture('meat', (texture) => {
+    texture.rotation = Math.PI;
+  });
+  const bottomMat = makeIngredientMaterial({
+    color: bottomMap ? 0xffffff : color,
+    roughness: 0.9,
+    metalness: 0,
+    map: bottomMap,
+    emissive: 0x2a150c,
+    emissiveIntensity: 0.05,
+  });
+  const mesh = new THREE.Mesh(geo, [sideMat, topMat, bottomMat]);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   return mesh;

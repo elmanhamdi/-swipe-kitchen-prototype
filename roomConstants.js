@@ -14,7 +14,7 @@ export const ROOM = {
 
 export const ZONES = {
   playerToCounter: 1.2,
-  counterToCustomers: -1.2,
+  counterToCustomers: -0.4,
 };
 
 export function halfWidthAtZ(z) {

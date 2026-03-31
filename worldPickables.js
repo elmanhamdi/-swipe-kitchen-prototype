@@ -1,17 +1,12 @@
 /**
- * 3D ingredient piles + trash can + Open shop button; raycast pick helper.
+ * 3D ingredient piles + trash can; raycast pick helper.
  */
 
 import * as THREE from 'three';
-import { FontLoader } from 'three/addons/loaders/FontLoader.js';
-import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
 import { createIngredientMesh } from './burgerVisuals.js';
-import { ROOM } from './roomConstants.js';
 
 const _ray = new THREE.Raycaster();
 const _ndc = new THREE.Vector2();
-
-const FONT_URL = 'https://unpkg.com/three@0.169.0/examples/fonts/helvetiker_bold.typeface.json';
 
 const PILE_SCALE = 0.38 * 3;
 const PILE_LAYER_Y = 0.065 * 3;
@@ -62,17 +57,14 @@ export class WorldPickables {
     this._meshes = [];
     this._trashShakeT = 0;
     this._trashLid = null;
-
-    const shelfMat = new THREE.MeshStandardMaterial({
-      color: 0x865b41,
-      roughness: 0.62,
-      metalness: 0.08,
-      emissive: 0x2a140b,
-      emissiveIntensity: 0.08,
-    });
-
+    const deskTex = new THREE.TextureLoader().load('./assets/textures/desk.png');
+    deskTex.colorSpace = THREE.SRGBColorSpace;
+    deskTex.wrapS = THREE.RepeatWrapping;
+    deskTex.wrapT = THREE.RepeatWrapping;
+    deskTex.repeat.set(1, 1);
     const woodTableMat = new THREE.MeshStandardMaterial({
-      color: 0x6e4a2a,
+      map: deskTex,
+      color: 0xddccbb,
       roughness: 0.72,
       metalness: 0.05,
       emissive: 0x1a0e06,
@@ -133,7 +125,7 @@ export class WorldPickables {
       emissive: 0x102a33,
       emissiveIntensity: 0.12,
     });
-    const trashX = -2.95;
+    const trashX = -1.3;
     const trashZ = 2.75;
     const trashRoot = new THREE.Group();
     trashRoot.position.set(trashX, 0, trashZ);
@@ -176,138 +168,6 @@ export class WorldPickables {
     lidPivot.add(rim);
     this._meshes.push(rim);
 
-    const openGroup = new THREE.Group();
-    openGroup.userData.openShop = true;
-
-    const boardW = 2.1;
-    const boardH = 1.12;
-    const boardD = 0.14;
-
-    const boardMat = new THREE.MeshStandardMaterial({
-      color: 0x1a1424,
-      roughness: 0.92,
-      metalness: 0.04,
-      emissive: 0x0a0612,
-      emissiveIntensity: 0.05,
-    });
-    const openBoard = new THREE.Mesh(new THREE.BoxGeometry(boardW, boardH, boardD), boardMat);
-    openBoard.castShadow = true;
-    openBoard.receiveShadow = true;
-    openBoard.userData.openShop = true;
-    openGroup.add(openBoard);
-
-    const neonFrameMat = new THREE.MeshStandardMaterial({
-      color: 0x22aaff,
-      emissive: 0x22aaff,
-      emissiveIntensity: 1.4,
-      roughness: 0.15,
-      metalness: 0.0,
-      transparent: true,
-      opacity: 0.92,
-    });
-    const frameInset = 0.06;
-    const frameDepth = 0.04;
-    const fW = boardW - frameInset * 2;
-    const fH = boardH - frameInset * 2;
-    const tubeR = 0.022;
-    const topBar = new THREE.Mesh(new THREE.BoxGeometry(fW, tubeR * 2, frameDepth), neonFrameMat);
-    topBar.position.set(0, fH / 2, boardD / 2 + 0.01);
-    topBar.userData.openShop = true;
-    openGroup.add(topBar);
-    const botBar = topBar.clone();
-    botBar.position.y = -fH / 2;
-    botBar.userData.openShop = true;
-    openGroup.add(botBar);
-    const leftBar = new THREE.Mesh(new THREE.BoxGeometry(tubeR * 2, fH, frameDepth), neonFrameMat);
-    leftBar.position.set(-fW / 2, 0, boardD / 2 + 0.01);
-    leftBar.userData.openShop = true;
-    openGroup.add(leftBar);
-    const rightBar = leftBar.clone();
-    rightBar.position.x = fW / 2;
-    rightBar.userData.openShop = true;
-    openGroup.add(rightBar);
-
-    const neonGlow = new THREE.PointLight(0x44bbff, 0.42, 4.5, 2);
-    neonGlow.position.set(0, 0, boardD / 2 + 0.3);
-    openGroup.add(neonGlow);
-
-    const legGeo = new THREE.CylinderGeometry(0.08, 0.1, 0.72, 8);
-    const leg1 = new THREE.Mesh(legGeo, shelfMat);
-    leg1.position.set(-0.78, -0.62, 0);
-    leg1.userData.openShop = true;
-    const leg2 = new THREE.Mesh(legGeo, shelfMat);
-    leg2.position.set(0.78, -0.62, 0);
-    leg2.userData.openShop = true;
-    openGroup.add(leg1, leg2);
-    openGroup.position.set(0, 1.06, ROOM.zBack + 0.58);
-    openGroup.scale.setScalar(1.15);
-    scene.add(openGroup);
-    this._openGroup = openGroup;
-    openGroup.traverse((ch) => {
-      if (ch instanceof THREE.Mesh) this._meshes.push(ch);
-    });
-
-    const burgerTextMat = new THREE.MeshStandardMaterial({
-      color: 0xffc832,
-      emissive: 0xffaa22,
-      emissiveIntensity: 1.2,
-      roughness: 0.18,
-      metalness: 0.0,
-    });
-    const openTextMat = new THREE.MeshStandardMaterial({
-      color: 0xffe8c0,
-      emissive: 0xffcc44,
-      emissiveIntensity: 1.0,
-      roughness: 0.2,
-      metalness: 0.0,
-    });
-    const loader = new FontLoader();
-    loader.load(
-      FONT_URL,
-      (font) => {
-        const burgerGeo = new TextGeometry('BURGER', {
-          font,
-          size: 0.22,
-          depth: 0.002,
-          curveSegments: 6,
-          bevelEnabled: true,
-          bevelThickness: 0.015,
-          bevelSize: 0.012,
-          bevelSegments: 2,
-        });
-        burgerGeo.computeBoundingBox();
-        const bbb = burgerGeo.boundingBox;
-        if (bbb) burgerGeo.translate(-(bbb.max.x + bbb.min.x) / 2, -(bbb.max.y + bbb.min.y) / 2, 0);
-        const burgerMesh = new THREE.Mesh(burgerGeo, burgerTextMat);
-        burgerMesh.userData.openShop = true;
-        burgerMesh.position.set(0, 0.18, boardD / 2 + 0.08);
-        openGroup.add(burgerMesh);
-        this._meshes.push(burgerMesh);
-
-        const openGeo = new TextGeometry('OPEN', {
-          font,
-          size: 0.2,
-          depth: 0.002,
-          curveSegments: 6,
-          bevelEnabled: true,
-          bevelThickness: 0.015,
-          bevelSize: 0.01,
-          bevelSegments: 2,
-        });
-        openGeo.computeBoundingBox();
-        const obb = openGeo.boundingBox;
-        if (obb) openGeo.translate(-(obb.max.x + obb.min.x) / 2, -(obb.max.y + obb.min.y) / 2, 0);
-        const openMesh = new THREE.Mesh(openGeo, openTextMat);
-        openMesh.userData.openShop = true;
-        openMesh.position.set(0, -0.14, boardD / 2 + 0.08);
-        openGroup.add(openMesh);
-        this._meshes.push(openMesh);
-      },
-      undefined,
-      () => {
-        /* font load failed — board still works */
-      },
-    );
   }
 
   /** Add external meshes to the raycast pick list (e.g. grill targets). */
@@ -325,7 +185,7 @@ export class WorldPickables {
 
   /** Hide the 3D Open prop after the shop starts (show again on reset). */
   setShopOpened(opened) {
-    if (this._openGroup) this._openGroup.visible = !opened;
+    void opened;
   }
 
   triggerTrashShake() {
@@ -411,7 +271,7 @@ export class WorldPickables {
     const info = findPickRoot(hits[0].object);
     if (!info) return null;
     if (info.kind === 'open') return { openShop: true };
-    if (info.kind === 'grillPatty') return { grillPatty: true };
+    if (info.kind === 'grillPatty') return { grillPatty: true, grillPattyMesh: info.root };
     if (info.kind === 'trash') return { trash: true };
     if (info.kind === 'ingredient') {
       const origin = new THREE.Vector3();

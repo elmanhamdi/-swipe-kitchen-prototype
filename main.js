@@ -7,7 +7,7 @@ import { Burger } from './burgerData.js';
 import { createPlate, BurgerStackView, createIngredientMesh } from './burgerVisuals.js';
 import { CustomerManager } from './customerManager.js';
 import { SlingshotController } from './slingshot.js';
-import { GameSession } from './gameCore.js';
+import { GameSession, START_TIME_SECONDS } from './gameCore.js';
 import { FloatingBonusLayer } from './floatingBonusText.js';
 import { ScreenShake, CoinFlyoutLayer, AmbientCameraDrift } from './juiceSystems.js';
 import { GameAudio } from './audioSystem.js';
@@ -40,7 +40,7 @@ function init() {
   gameAudio.init(camera);
 
   const unlockAudioOnce = () => {
-    gameAudio.tryUnlock().then(() => gameAudio.startMusicIfNeeded());
+    gameAudio.tryUnlock().then(() => gameAudio.restartMusic());
   };
   window.addEventListener('pointerdown', unlockAudioOnce, { once: true, passive: true });
 
@@ -57,7 +57,7 @@ function init() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, pixelRatioMax));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.03;
+  renderer.toneMappingExposure = 1.2;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.shadowMap.autoUpdate = true;
@@ -89,33 +89,37 @@ function init() {
   const stackView = new BurgerStackView(stackAnchor);
   stackView.rebuildFromStack(burger.getStack(), { animateLast: false });
 
-  const debugAxes = new THREE.AxesHelper(0.75);
-  debugAxes.position.set(0, plateY + 0.52, plateZ);
-  debugAxes.name = 'DebugAxes';
-  playArea.add(debugAxes);
-
   const worldPickables = new WorldPickables(playArea, scene);
   const meatGrill = new MeatGrill(playArea, plateY, plateZ);
   worldPickables.registerRaycastTargets(meatGrill.raycastTargets);
 
   const clock = new THREE.Clock();
-  const statusEl = document.getElementById('burger-status');
   const coinsDisplayEl = document.getElementById('coins-display');
   const coinsValueEl = document.getElementById('coins-value');
-  const timerEl = document.getElementById('game-timer');
+  const customersValueEl = document.getElementById('customers-value');
+  const timerFillEl = document.getElementById('game-timer-fill');
   const timerBlockEl = document.getElementById('game-timer-block');
   const timerBonusEl = document.getElementById('game-timer-bonus');
   const gameOverOverlay = document.getElementById('game-over-overlay');
   const gameOverCoinsEl = document.getElementById('game-over-coins');
   const playAgainBtn = document.getElementById('play-again-btn');
+  const startCookingBtn = document.getElementById('start-cooking-btn');
   const hudInfoBtn = document.getElementById('hud-info-btn');
   const hudInfoModal = document.getElementById('hud-info-modal');
   const hudInfoClose = document.getElementById('hud-info-close');
   const gameOverSplash = document.querySelector('.game-over-splash');
+  const soundBtn = document.getElementById('hud-sound-btn');
+  const soundIconOn = document.getElementById('sound-icon-on');
+  const soundIconOff = document.getElementById('sound-icon-off');
+  let startButtonLaunchTimer = 0;
+  let startButtonPressTimer = 0;
 
   const gameSession = new GameSession();
   let prevCoins = gameSession.totalCoins;
+  let prevCustomers = gameSession.customersServed;
   let gameOverOverlayShown = false;
+  let lastTickTockTime = 0;
+  const TICK_TOCK_THRESHOLD = 10;
 
   function refreshClockAndEconomy() {
     const total = gameSession.totalCoins;
@@ -128,15 +132,44 @@ function init() {
       prevCoins = total;
       coinsValueEl.textContent = String(total);
     }
-    if (timerEl) {
-      const s = Math.max(0, Math.ceil(gameSession.timeLeft));
-      timerEl.textContent = String(s);
+
+    const served = gameSession.customersServed;
+    if (customersValueEl) {
+      if (served > prevCustomers) {
+        customersValueEl.classList.remove('game-hud__customers-value--pop');
+        void customersValueEl.offsetWidth;
+        customersValueEl.classList.add('game-hud__customers-value--pop');
+      }
+      prevCustomers = served;
+      customersValueEl.textContent = String(served);
+    }
+
+    const ratio = Math.max(0, Math.min(1, gameSession.timeLeft / START_TIME_SECONDS));
+    if (timerFillEl) {
+      timerFillEl.style.width = `${(ratio * 100).toFixed(1)}%`;
+      let barColor;
+      if (ratio > 0.5) barColor = '#00e5ff';
+      else if (ratio > 0.25) barColor = '#ffc107';
+      else if (ratio > 0.10) barColor = '#ff9800';
+      else barColor = '#f44336';
+      timerFillEl.style.backgroundColor = barColor;
+
+      const glowMap = { '#00e5ff': 'rgba(0,229,255,0.35)', '#ffc107': 'rgba(255,193,7,0.35)', '#ff9800': 'rgba(255,152,0,0.4)', '#f44336': 'rgba(244,67,54,0.5)' };
+      timerFillEl.style.boxShadow = `0 0 8px ${glowMap[barColor]}`;
     }
     if (timerBlockEl) {
       const s = Math.max(0, Math.ceil(gameSession.timeLeft));
       const live = !gameSession.gameOver && s > 0;
       timerBlockEl.classList.toggle('game-hud__timer--critical', live && s <= 5);
       timerBlockEl.classList.toggle('game-hud__timer--low', live && s <= 10 && s > 5);
+    }
+
+    if (!gameSession.gameOver && gameSession.timeLeft > 0 && gameSession.timeLeft <= TICK_TOCK_THRESHOLD) {
+      const currentSec = Math.ceil(gameSession.timeLeft);
+      if (currentSec !== lastTickTockTime) {
+        lastTickTockTime = currentSec;
+        gameAudio.playTickTock();
+      }
     }
   }
 
@@ -167,27 +200,70 @@ function init() {
     if (e.target === hudInfoModal) setHudInfoVisible(false);
   });
 
+  function updateSoundIcon() {
+    if (!soundIconOn || !soundIconOff) return;
+    const muted = gameAudio.isMuted;
+    soundIconOn.style.display = muted ? 'none' : '';
+    soundIconOff.style.display = muted ? '' : 'none';
+  }
+
+  soundBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    gameAudio.toggleMute();
+    updateSoundIcon();
+  });
+
   function refreshHud() {
     refreshClockAndEconomy();
-    if (!statusEl) return;
-    if (gameSession.gameOver) {
-      statusEl.textContent = '';
-      return;
-    }
-    const n = burger.getStack().length;
-    if (!gameSession.shopIsOpen) {
-      statusEl.textContent = 'Tap the yellow Open sign by the door to begin.';
-    } else if (n === 0) {
-      statusEl.textContent = '';
-    } else if (burger.isComplete()) {
-      statusEl.textContent = 'Order complete — drag from burger to aim, release to throw.';
-    } else if (n >= 6) {
-      statusEl.textContent = 'Stack full — add top bun or trash.';
-    } else {
-      statusEl.textContent = `${n}/6 layers — tap piles or bun for top.`;
-    }
+    if (startCookingBtn) startCookingBtn.hidden = gameSession.shopIsOpen || gameSession.gameOver;
   }
   refreshHud();
+
+  function startGameplay() {
+    if (gameSession.shopIsOpen || gameSession.gameOver) return;
+    if (startButtonLaunchTimer) {
+      window.clearTimeout(startButtonLaunchTimer);
+      startButtonLaunchTimer = 0;
+    }
+    if (startButtonPressTimer) {
+      window.clearTimeout(startButtonPressTimer);
+      startButtonPressTimer = 0;
+    }
+    gameSession.openShop();
+    customerManager.beginGameplay();
+    worldPickables.setShopOpened(true);
+    const shopSplash = document.getElementById('shop-open-splash');
+    if (shopSplash) {
+      shopSplash.classList.remove('shop-open-splash--show');
+      void shopSplash.offsetWidth;
+      shopSplash.classList.add('shop-open-splash--show');
+      window.setTimeout(() => shopSplash.classList.remove('shop-open-splash--show'), 900);
+    }
+    refreshHud();
+  }
+
+  function triggerStartCookingCTA() {
+    if (!startCookingBtn || gameSession.shopIsOpen || gameSession.gameOver) return;
+    startCookingBtn.classList.remove('start-cooking-btn--press');
+    void startCookingBtn.offsetWidth;
+    startCookingBtn.classList.add('start-cooking-btn--press');
+    if (startButtonPressTimer) window.clearTimeout(startButtonPressTimer);
+    startButtonPressTimer = window.setTimeout(() => {
+      startButtonPressTimer = 0;
+      startCookingBtn.classList.remove('start-cooking-btn--press');
+    }, 220);
+    gameAudio.playTap();
+    if (startButtonLaunchTimer) window.clearTimeout(startButtonLaunchTimer);
+    startButtonLaunchTimer = window.setTimeout(() => {
+      startButtonLaunchTimer = 0;
+      startGameplay();
+    }, 120);
+  }
+
+  startCookingBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    triggerStartCookingCTA();
+  });
 
   const floatingLayer = new FloatingBonusLayer(stage, camera);
   const screenShake = new ScreenShake(camera, CAMERA_REST.clone());
@@ -201,10 +277,8 @@ function init() {
   const ingredientZips = [];
 
   let timeBonusHideTimer = 0;
-  /** Inline "+0.8s" next to countdown + quick digit pulse (time already applied in GameSession). */
   function showTimeBonusHud(seconds) {
     refreshClockAndEconomy();
-    if (!timerEl) return;
     const s = Math.max(0, Number(seconds));
     if (s <= 0) return;
     if (timerBonusEl) {
@@ -218,10 +292,6 @@ function init() {
         timerBonusEl.textContent = '';
       }, 950);
     }
-    timerEl.classList.remove('game-hud__timer-digits--bonus-pop');
-    void timerEl.offsetWidth;
-    timerEl.classList.add('game-hud__timer-digits--bonus-pop');
-    window.setTimeout(() => timerEl.classList.remove('game-hud__timer-digits--bonus-pop'), 480);
     if (timerBlockEl) {
       timerBlockEl.classList.remove('game-hud__timer--gain-pop');
       void timerBlockEl.offsetWidth;
@@ -236,17 +306,7 @@ function init() {
     if (!pick) return false;
     if (pick.openShop) {
       if (gameSession.shopIsOpen) return true;
-      gameSession.openShop();
-      customerManager.beginGameplay();
-      worldPickables.setShopOpened(true);
-      const shopSplash = document.getElementById('shop-open-splash');
-      if (shopSplash) {
-        shopSplash.classList.remove('shop-open-splash--show');
-        void shopSplash.offsetWidth;
-        shopSplash.classList.add('shop-open-splash--show');
-        window.setTimeout(() => shopSplash.classList.remove('shop-open-splash--show'), 900);
-      }
-      refreshHud();
+      startGameplay();
       return true;
     }
     if (!gameSession.canPlay()) {
@@ -267,7 +327,7 @@ function init() {
     }
     if (pick.grillPatty) {
       if (slingshotRef?.isBusy()) return true;
-      const result = meatGrill.onPattyClick();
+      const result = meatGrill.onPattyClick(pick.grillPattyMesh);
       if (result === 'served') {
         const canAdd = burger.canAddIngredient('meat');
         if (canAdd.ok) {
@@ -360,9 +420,10 @@ function init() {
   function showGameOverUI() {
     if (gameOverOverlayShown || !gameOverOverlay) return;
     gameOverOverlayShown = true;
+    gameAudio.stopSizzle();
     gameAudio.playTimeUp();
     if (gameOverCoinsEl) {
-      gameOverCoinsEl.textContent = `${gameSession.totalCoins} coins`;
+      gameOverCoinsEl.textContent = `${gameSession.totalCoins} coins · ${gameSession.customersServed} served`;
     }
     gameOverOverlay.classList.add('game-over-overlay--visible');
     gameOverOverlay.setAttribute('aria-hidden', 'false');
@@ -376,7 +437,9 @@ function init() {
   function resetFullGame() {
     gameSession.resetForNewGame();
     prevCoins = 0;
+    prevCustomers = 0;
     gameOverOverlayShown = false;
+    lastTickTockTime = 0;
     if (gameOverOverlay) {
       gameOverOverlay.classList.remove('game-over-overlay--visible');
       gameOverOverlay.setAttribute('aria-hidden', 'true');
@@ -394,6 +457,8 @@ function init() {
     }
     customerManager.resetGame();
     meatGrill.reset();
+    gameAudio.stopSizzle();
+    gameAudio.restartMusic();
     worldPickables.registerRaycastTargets(meatGrill.raycastTargets);
     worldPickables.setShopOpened(false);
     worldPickables.resetTransientState();
@@ -441,7 +506,10 @@ function init() {
       customerManager.update(simDt);
       slingshotRef?.update(simDt);
       worldPickables.update(simDt);
-      meatGrill.update(simDt);
+      const grillDinged = meatGrill.update(simDt);
+      if (grillDinged) gameAudio.playGrillDing();
+      if (meatGrill.isAnyCooking) gameAudio.startSizzle();
+      else gameAudio.stopSizzle();
       floatingLayer.update(simDt);
       cameraDrift.update(simDt);
       screenShake.update(simDt);

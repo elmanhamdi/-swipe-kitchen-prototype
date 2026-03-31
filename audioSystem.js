@@ -21,7 +21,12 @@ export const AUDIO_LEVELS = {
   trash: 0.52,
   timeGain: 0.46,
   coinTick: 0.48,
+  tickTock: 0.4,
+  sizzle: 0.07,
+  grillDing: 0.5,
 };
+
+const MUSIC_TRACK_URL = './assets/O%20P%20Baron%20-%20Welcome%20to%20Our%20Show.mp3';
 
 /**
  * @param {AudioContext} ctx
@@ -169,77 +174,126 @@ function createFunkyLoopBuffer(ctx, durationSec = 2.4) {
  * - simple major pentatonic melody + soft bass
  * - avoids piercing highs to reduce listener fatigue
  */
-function createBouncyLoopBuffer(ctx, durationSec = 3.2) {
+function createBouncyLoopBuffer(ctx, durationSec = 32) {
   const sr = ctx.sampleRate;
   const n = Math.floor(sr * durationSec);
   const buffer = ctx.createBuffer(2, n, sr);
   const bpm = 118;
   const beatDur = 60 / bpm;
-
-  // C major pentatonic-ish set (C D E G A) around middle C.
-  const scale = [261.63, 293.66, 329.63, 392.0, 440.0];
-  const melodySteps = [0, 2, 1, 3, 2, 4, 3, 1];
-  const bassSteps = [0, 0, 3, 0, 4, 0, 3, 0];
-
-  // Simple 8th-note grid.
+  const barDur = beatDur * 4;
   const stepDur = beatDur / 2;
-  const stepCount = Math.max(1, Math.floor(durationSec / stepDur));
+
+  const C4 = 261.63, D4 = 293.66, E4 = 329.63, F4 = 349.23, G4 = 392.0, A4 = 440.0, B4 = 493.88;
+  const scale = [C4, D4, E4, G4, A4];
+
+  const melodyPhrases = [
+    [0, 2, 1, 3, 2, 4, 3, 1],
+    [2, 4, 3, 1, 0, 2, 4, 3],
+    [4, 3, 2, 0, 1, 3, 4, 2],
+    [1, 0, 2, 4, 3, 2, 0, 1],
+    [3, 4, 2, 1, 0, 3, 1, 2],
+    [0, 1, 3, 2, 4, 0, 2, 3],
+    [2, 3, 4, 1, 0, 4, 3, 0],
+    [4, 2, 0, 3, 1, 0, 2, 4],
+  ];
+  const bassPhrases = [
+    [0, 0, 3, 0, 4, 0, 3, 0],
+    [0, 3, 0, 4, 0, 2, 0, 3],
+    [3, 0, 4, 0, 2, 0, 3, 0],
+    [4, 0, 3, 0, 0, 4, 0, 3],
+    [0, 2, 0, 3, 4, 0, 2, 0],
+    [2, 0, 4, 0, 3, 0, 0, 2],
+    [0, 4, 3, 0, 2, 0, 4, 0],
+    [3, 0, 0, 4, 0, 3, 2, 0],
+  ];
+
+  const chordRoots = [C4, F4, G4, C4, A4 / 2, F4, G4, C4];
+
+  const sections = [
+    { melVol: 0.04, bassVol: 0.16, kickVol: 0.06, hatVol: 0.008, chordVol: 0.0 },
+    { melVol: 0.08, bassVol: 0.16, kickVol: 0.08, hatVol: 0.010, chordVol: 0.02 },
+    { melVol: 0.11, bassVol: 0.16, kickVol: 0.09, hatVol: 0.012, chordVol: 0.035 },
+    { melVol: 0.12, bassVol: 0.17, kickVol: 0.09, hatVol: 0.014, chordVol: 0.04 },
+    { melVol: 0.11, bassVol: 0.16, kickVol: 0.09, hatVol: 0.012, chordVol: 0.035 },
+    { melVol: 0.12, bassVol: 0.17, kickVol: 0.09, hatVol: 0.014, chordVol: 0.04 },
+    { melVol: 0.10, bassVol: 0.15, kickVol: 0.08, hatVol: 0.010, chordVol: 0.03 },
+    { melVol: 0.06, bassVol: 0.14, kickVol: 0.06, hatVol: 0.008, chordVol: 0.01 },
+  ];
+
+  const seededRandom = (function () {
+    let s = 42;
+    return function () {
+      s = (s * 1664525 + 1013904223) & 0xffffffff;
+      return (s >>> 0) / 0xffffffff;
+    };
+  })();
 
   for (let ch = 0; ch < 2; ch++) {
     const d = buffer.getChannelData(ch);
     const pan = ch === 0 ? 0.96 : 1.04;
-
-    let melPhase = 0;
-    let bassPhase = 0;
+    let melPhase = 0, bassPhase = 0, chordPhase1 = 0, chordPhase2 = 0;
 
     for (let i = 0; i < n; i++) {
       const t = i / sr;
-      const step = Math.floor(t / stepDur) % stepCount;
-      const u = (t / stepDur) % 1; // 0..1 within step
+      const barIdx = Math.floor(t / barDur) % 8;
+      const sec = sections[barIdx];
+      const melody = melodyPhrases[barIdx];
+      const bass = bassPhrases[barIdx];
+      const chordRoot = chordRoots[barIdx];
 
-      // Note envelopes (fast attack, short decay).
+      const step = Math.floor(t / stepDur);
+      const u = (t / stepDur) % 1;
+
       const env = Math.min(1, u * 18) * Math.exp(-u * 6.5);
       const envSoft = Math.min(1, u * 10) * Math.exp(-u * 3.2);
+      const envPad = Math.min(1, u * 5) * Math.exp(-u * 1.2);
 
-      const melIdx = melodySteps[step % melodySteps.length];
-      const bassIdx = bassSteps[step % bassSteps.length];
+      const melIdx = melody[step % melody.length];
+      const bassIdx = bass[step % bass.length];
 
-      // Slightly vary octaves to keep it playful.
-      const melOct = step % 8 === 7 ? 2 : 1;
+      const melOct = (step % 16 === 7 || step % 16 === 15) ? 2 : 1;
       const melFreq = scale[melIdx] * melOct;
       const bassFreq = (scale[bassIdx] / 2) * (step % 4 === 2 ? 1.0 : 0.5);
 
       melPhase += (2 * Math.PI * melFreq) / sr;
       bassPhase += (2 * Math.PI * bassFreq) / sr;
+      chordPhase1 += (2 * Math.PI * chordRoot) / sr;
+      chordPhase2 += (2 * Math.PI * chordRoot * 1.498) / sr;
 
-      // Soft bass (sine + tiny 2nd harmonic).
       let s = 0;
-      s += 0.16 * pan * envSoft * (Math.sin(bassPhase) + 0.18 * Math.sin(bassPhase * 2));
+      s += sec.bassVol * pan * envSoft * (Math.sin(bassPhase) + 0.18 * Math.sin(bassPhase * 2));
 
-      // Melody (triangle-ish via harmonics; kept gentle).
       const tri =
         0.68 * Math.sin(melPhase) +
         0.22 * Math.sin(melPhase * 3) +
         0.10 * Math.sin(melPhase * 5);
-      s += 0.11 * pan * env * tri;
+      s += sec.melVol * pan * env * tri;
 
-      // Light kick on beats 0 and 2.
+      s += sec.chordVol * pan * envPad * (
+        Math.sin(chordPhase1) * 0.5 +
+        Math.sin(chordPhase2) * 0.35 +
+        Math.sin(chordPhase1 * 2) * 0.15
+      );
+
       const beat = t / beatDur;
       const beatPhase = beat % 1;
       const beatStep = Math.floor(beat) % 4;
       if ((beatStep === 0 || beatStep === 2) && beatPhase < 0.12) {
         const kenv = Math.sin((beatPhase / 0.12) * Math.PI) * (1 - beatPhase / 0.12);
-        s += 0.09 * pan * kenv * Math.sin(2 * Math.PI * (95 - beatPhase * 420) * t);
+        s += sec.kickVol * pan * kenv * Math.sin(2 * Math.PI * (95 - beatPhase * 420) * t);
       }
 
-      // Very light hat ticks (reduced noise; short).
       if (beatPhase > 0.48 && beatPhase < 0.52) {
-        const hn = (Math.random() * 2 - 1);
+        const hn = (seededRandom() * 2 - 1);
         const henv = 1 - Math.abs((beatPhase - 0.5) / 0.02);
-        s += 0.012 * pan * hn * henv;
+        s += sec.hatVol * pan * hn * henv;
       }
 
-      // Gentle limiter.
+      if (beatStep === 1 && beatPhase < 0.06) {
+        const snEnv = Math.sin((beatPhase / 0.06) * Math.PI) * (1 - beatPhase / 0.06);
+        s += 0.03 * pan * snEnv * (seededRandom() * 2 - 1);
+      }
+
       d[i] = Math.max(-1, Math.min(1, s * 0.92));
     }
   }
@@ -283,6 +337,89 @@ function createTimeGainBuffer(ctx, durationSec = 0.16) {
   return buffer;
 }
 
+/** Short clock tick — metallic click with resonance. */
+function createTickTockBuffer(ctx, durationSec = 0.06) {
+  const sr = ctx.sampleRate;
+  const n = Math.floor(sr * durationSec);
+  const buffer = ctx.createBuffer(1, n, sr);
+  const d = buffer.getChannelData(0);
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const env = Math.exp(-t * 65);
+    const click = Math.sin(2 * Math.PI * 3200 * t) * 0.3;
+    const body = Math.sin(2 * Math.PI * 1200 * t) * 0.2;
+    const ring = Math.sin(2 * Math.PI * 2400 * t) * Math.exp(-t * 35) * 0.15;
+    d[i] = (click + body + ring) * env;
+  }
+  return buffer;
+}
+
+/** Bright oven-timer ding — two quick bell tones. */
+function createGrillDingBuffer(ctx, durationSec = 0.35) {
+  const sr = ctx.sampleRate;
+  const n = Math.floor(sr * durationSec);
+  const buffer = ctx.createBuffer(1, n, sr);
+  const d = buffer.getChannelData(0);
+  const f1 = 1568;
+  const f2 = 2093;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const env1 = t < 0.15 ? Math.exp(-t * 18) : 0;
+    const env2 = t > 0.1 ? Math.exp(-(t - 0.1) * 20) : 0;
+    const bell1 = Math.sin(2 * Math.PI * f1 * t) * 0.35 + Math.sin(2 * Math.PI * f1 * 2.0 * t) * 0.12;
+    const bell2 = Math.sin(2 * Math.PI * f2 * t) * 0.30 + Math.sin(2 * Math.PI * f2 * 2.0 * t) * 0.10;
+    d[i] = Math.max(-1, Math.min(1, bell1 * env1 + bell2 * env2));
+  }
+  return buffer;
+}
+
+/**
+ * Continuous oil-sizzle loop — filtered noise with random crackle pops.
+ * Designed to loop seamlessly.
+ */
+function createSizzleBuffer(ctx, durationSec = 2.0) {
+  const sr = ctx.sampleRate;
+  const n = Math.floor(sr * durationSec);
+  const buffer = ctx.createBuffer(1, n, sr);
+  const d = buffer.getChannelData(0);
+
+  let seed = 7;
+  function rng() {
+    seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+    return (seed >>> 0) / 0xffffffff;
+  }
+
+  let lp = 0;
+  const lpAlpha = 0.12;
+
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const raw = rng() * 2 - 1;
+    lp += lpAlpha * (raw - lp);
+    let s = lp * 0.6;
+
+    const hiss = (rng() * 2 - 1) * 0.25;
+    s += hiss * Math.max(0, Math.sin(2 * Math.PI * 0.8 * t));
+
+    if (rng() < 0.008) {
+      const popLen = Math.floor(sr * (0.003 + rng() * 0.008));
+      const popAmp = 0.3 + rng() * 0.4;
+      for (let j = 0; j < popLen && (i + j) < n; j++) {
+        const pEnv = 1 - j / popLen;
+        d[i + j] += (rng() * 2 - 1) * popAmp * pEnv * pEnv;
+      }
+    }
+
+    const fade = Math.min(1, i / (sr * 0.02)) * Math.min(1, (n - i) / (sr * 0.02));
+    d[i] = (d[i] || 0) + s * fade;
+  }
+
+  for (let i = 0; i < n; i++) {
+    d[i] = Math.max(-1, Math.min(1, d[i]));
+  }
+  return buffer;
+}
+
 function playOneShot(audio, vol) {
   if (!audio || !audio.buffer) return;
   try {
@@ -313,10 +450,17 @@ export class GameAudio {
     /** @type {THREE.Audio | null} */
     this._timeUp = null;
     this._timeGain = null;
+    this._tickTock = null;
+    this._sizzle = null;
+    this._sizzlePlaying = false;
+    this._grillDing = null;
     /** @type {THREE.Audio | null} */
     this._music = null;
-    this._musicStarted = false;
+    this._musicReady = false;
+    this._musicWanted = false;
     this._unlocked = false;
+    this._muted = false;
+    this._preMuteMaster = AUDIO_LEVELS.master;
   }
 
   /**
@@ -336,9 +480,11 @@ export class GameAudio {
       wrongSplat: createSplatBuffer(ctx),
       missThud: createThudBuffer(ctx),
       trash: createTrashBuffer(ctx),
-      funk: createBouncyLoopBuffer(ctx),
       timeUp: createTimeUpBuffer(ctx),
       timeGain: createTimeGainBuffer(ctx),
+      tickTock: createTickTockBuffer(ctx),
+      sizzle: createSizzleBuffer(ctx),
+      grillDing: createGrillDingBuffer(ctx),
     };
 
     for (let i = 0; i < 6; i++) {
@@ -366,16 +512,39 @@ export class GameAudio {
     this._timeUp.setBuffer(this._buffers.timeUp);
     this._timeGain = new THREE.Audio(this.listener);
     this._timeGain.setBuffer(this._buffers.timeGain);
+    this._tickTock = new THREE.Audio(this.listener);
+    this._tickTock.setBuffer(this._buffers.tickTock);
+
+    this._sizzle = new THREE.Audio(this.listener);
+    this._sizzle.setBuffer(this._buffers.sizzle);
+    this._sizzle.setLoop(true);
+    this._sizzle.setVolume(0);
+
+    this._grillDing = new THREE.Audio(this.listener);
+    this._grillDing.setBuffer(this._buffers.grillDing);
 
     this._music = new THREE.Audio(this.listener);
-    this._music.setBuffer(this._buffers.funk);
     this._music.setLoop(true);
     this._applyMusicVolume();
 
+    const musicLoader = new THREE.AudioLoader();
+    musicLoader.load(
+      MUSIC_TRACK_URL,
+      (buffer) => {
+        if (!this._music) return;
+        this._music.setBuffer(buffer);
+        this._musicReady = true;
+        if (this._musicWanted && ctx.state === 'running') this.restartMusic();
+      },
+      undefined,
+      () => {
+        this._musicReady = false;
+      },
+    );
+
     ctx.addEventListener('statechange', () => {
-      if (ctx.state === 'running') this.startMusicIfNeeded();
+      if (ctx.state === 'running' && this._musicWanted) this.restartMusic();
     });
-    if (ctx.state === 'running') this.startMusicIfNeeded();
   }
 
   _sfxVol(key) {
@@ -402,6 +571,24 @@ export class GameAudio {
     this.levels.sfx = Math.max(0, Math.min(1, v));
   }
 
+  get isMuted() {
+    return this._muted;
+  }
+
+  toggleMute() {
+    if (this._muted) {
+      this._muted = false;
+      this.levels.master = this._preMuteMaster;
+    } else {
+      this._preMuteMaster = this.levels.master || AUDIO_LEVELS.master;
+      this._muted = true;
+      this.levels.master = 0;
+    }
+    this._applyMusicVolume();
+    this._applySizzleVolume();
+    return this._muted;
+  }
+
   /** Resume AudioContext after user gesture (required on many browsers). */
   async tryUnlock() {
     if (!this.listener) return;
@@ -412,13 +599,24 @@ export class GameAudio {
     this._unlocked = true;
   }
 
-  /** Start jazz loop once context is running (call after tryUnlock). */
-  startMusicIfNeeded() {
-    if (!this._music || this._musicStarted) return;
+  /** Start or restart the selected music track from the beginning. */
+  restartMusic() {
+    this._musicWanted = true;
+    if (!this._music || !this._musicReady) return;
     if (this.listener?.context?.state !== 'running') return;
     try {
+      if (this._music.isPlaying) this._music.stop();
       this._music.play();
-      this._musicStarted = true;
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  stopMusic() {
+    this._musicWanted = false;
+    if (!this._music?.isPlaying) return;
+    try {
+      this._music.stop();
     } catch (_) {
       /* ignore */
     }
@@ -465,5 +663,32 @@ export class GameAudio {
 
   playTimeGain() {
     playOneShot(this._timeGain, this._sfxVol('timeGain'));
+  }
+
+  playTickTock() {
+    playOneShot(this._tickTock, this._sfxVol('tickTock'));
+  }
+
+  playGrillDing() {
+    playOneShot(this._grillDing, this._sfxVol('grillDing'));
+  }
+
+  startSizzle() {
+    if (!this._sizzle || this._sizzlePlaying) return;
+    this._sizzlePlaying = true;
+    this._sizzle.setVolume(this.levels.master * this.levels.sfx * this.levels.sizzle);
+    try { this._sizzle.play(); } catch (_) { /* already playing */ }
+  }
+
+  stopSizzle() {
+    if (!this._sizzle || !this._sizzlePlaying) return;
+    this._sizzlePlaying = false;
+    try { this._sizzle.stop(); } catch (_) { /* not playing */ }
+  }
+
+  _applySizzleVolume() {
+    if (this._sizzle && this._sizzlePlaying) {
+      this._sizzle.setVolume(this.levels.master * this.levels.sfx * this.levels.sizzle);
+    }
   }
 }

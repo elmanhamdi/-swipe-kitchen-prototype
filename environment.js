@@ -145,7 +145,7 @@ function createStringLights(group, y, zStart, zEnd, xOffset, count) {
     bulb.scale.setScalar(0.8 + Math.sin(i * 1.7) * 0.15);
     group.add(bulb);
 
-    const glow = new THREE.PointLight(0xffcc55, 0.12, 3.0, 2);
+    const glow = new THREE.PointLight(0xffcc55, 0.22, 3.5, 2);
     glow.position.copy(bulb.position);
     group.add(glow);
   }
@@ -306,11 +306,7 @@ export function buildRestaurantRoom() {
     group.add(trimBottom);
   }
 
-  /* --- String lights: above counter, along back wall area --- */
-  const counterZ = ZONES.counterToCustomers + 0.32 + 0.55 / 2 - 0.08;
-  createStringLights(group, 2.1, ROOM.zFront - 0.3, counterZ + 0.8, 0, 12);
-  createStringLights(group, 0.68, 2.8, counterZ + 1.0, -0.8, 6);
-  createStringLights(group, 0.68, 2.8, counterZ + 1.0, 0.8, 6);
+  /* --- String lights removed (were 3 lines here) --- */
 
   return { group, backDoor };
 }
@@ -331,11 +327,11 @@ export function applyAtmosphere(scene) {
 export function createRestaurantLights(scene) {
   const { shadowMapSize } = getRenderProfile();
 
-  const hemi = new THREE.HemisphereLight(0xffd8b0, 0x3a2218, 0.36);
+  const hemi = new THREE.HemisphereLight(0xffd8b0, 0x3a2218, 0.7);
   hemi.name = 'HemisphereLight';
   scene.add(hemi);
 
-  const key = new THREE.DirectionalLight(0xffe0b8, 1.0);
+  const key = new THREE.DirectionalLight(0xffe0b8, 1.6);
   key.name = 'KeyLight';
   key.position.set(-5.5, 13.5, 7.2);
   key.castShadow = true;
@@ -352,22 +348,22 @@ export function createRestaurantLights(scene) {
   key.shadow.radius = shadowMapSize >= 2048 ? 3.2 : 2.4;
   scene.add(key);
 
-  const fill = new THREE.PointLight(0xffb070, 0.72, 22, 2);
+  const fill = new THREE.PointLight(0xffb070, 1.1, 22, 2);
   fill.name = 'WarmFill';
   fill.position.set(0.6, 3.2, 1.2);
   scene.add(fill);
 
-  const counterGlow = new THREE.PointLight(0xffc85a, 0.56, 14, 2);
+  const counterGlow = new THREE.PointLight(0xffc85a, 0.85, 14, 2);
   counterGlow.name = 'CounterGlow';
   counterGlow.position.set(0, 2.0, 0.8);
   scene.add(counterGlow);
 
-  const backWarm = new THREE.PointLight(0xff9050, 0.32, 16, 2);
+  const backWarm = new THREE.PointLight(0xff9050, 0.55, 16, 2);
   backWarm.name = 'BackWarm';
   backWarm.position.set(0, 2.6, -2.8);
   scene.add(backWarm);
 
-  const frontAmbient = new THREE.PointLight(0xffcc80, 0.2, 10, 2);
+  const frontAmbient = new THREE.PointLight(0xffcc80, 0.4, 10, 2);
   frontAmbient.name = 'FrontAmbient';
   frontAmbient.position.set(0, 1.4, 3.0);
   scene.add(frontAmbient);
