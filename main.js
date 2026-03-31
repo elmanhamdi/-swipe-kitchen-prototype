@@ -15,9 +15,10 @@ import { buildRestaurantRoom, applyAtmosphere, createRestaurantLights } from './
 import { configureForDevice, getRenderProfile } from './renderQuality.js';
 import { BurgerDebrisSystem } from './burgerDebris.js';
 import { WorldPickables } from './worldPickables.js';
+import { MeatGrill } from './meatGrill.js';
 
 const STAGE_SELECTOR = '#canvas-stage';
-const CAMERA_REST = new THREE.Vector3(0, 8, 10);
+const CAMERA_REST = new THREE.Vector3(0, 7.35, 8.85);
 
 function init() {
   configureForDevice();
@@ -75,22 +76,27 @@ function init() {
   playArea.position.set(0, 0, 2.42);
   scene.add(playArea);
 
+  const plateY = 1.1;
+  const plateZ = 1;
   const plate = createPlate();
+  plate.position.set(0, plateY, plateZ);
   playArea.add(plate);
 
   const stackAnchor = new THREE.Group();
-  stackAnchor.position.set(0, 0.13, 0);
+  stackAnchor.position.set(0, plateY + 0.13, plateZ);
   playArea.add(stackAnchor);
 
   const stackView = new BurgerStackView(stackAnchor);
   stackView.rebuildFromStack(burger.getStack(), { animateLast: false });
 
   const debugAxes = new THREE.AxesHelper(0.75);
-  debugAxes.position.set(0, 0.52, 0);
+  debugAxes.position.set(0, plateY + 0.52, plateZ);
   debugAxes.name = 'DebugAxes';
   playArea.add(debugAxes);
 
   const worldPickables = new WorldPickables(playArea, scene);
+  const meatGrill = new MeatGrill(playArea, plateY, plateZ);
+  worldPickables.registerRaycastTargets(meatGrill.raycastTargets);
 
   const clock = new THREE.Clock();
   const statusEl = document.getElementById('burger-status');
@@ -248,7 +254,9 @@ function init() {
     }
     if (pick.trash) {
       if (slingshotRef?.isBusy()) return true;
+      const hadStack = burger.getStack().length > 0;
       gameAudio.playTrash();
+      if (hadStack) worldPickables.triggerTrashShake();
       gameSession.resetCombo();
       gameSession.clearBurgerTiming();
       burger.reset();
@@ -257,8 +265,42 @@ function init() {
       refreshHud();
       return true;
     }
+    if (pick.grillPatty) {
+      if (slingshotRef?.isBusy()) return true;
+      const result = meatGrill.onPattyClick();
+      if (result === 'served') {
+        const canAdd = burger.canAddIngredient('meat');
+        if (canAdd.ok) {
+          meatGrill.completeServe();
+          const resolved = canAdd.resolved ?? 'meat';
+          const mesh = createIngredientMesh(resolved);
+          const grillWorldPos = new THREE.Vector3();
+          meatGrill._pattyPivot.getWorldPosition(grillWorldPos);
+          mesh.position.copy(grillWorldPos);
+          mesh.scale.setScalar(0.74);
+          scene.add(mesh);
+          const end = new THREE.Vector3();
+          stackAnchor.getWorldPosition(end);
+          end.y += 0.22;
+          ingredientZips.push({ mesh, start: grillWorldPos.clone(), end, t: 0, dur: 0.22, ingredient: resolved });
+          worldPickables.registerRaycastTargets(meatGrill.raycastTargets);
+        }
+      }
+      refreshHud();
+      return true;
+    }
     if (pick.ingredient) {
       if (slingshotRef?.isBusy()) return true;
+      if (pick.ingredient === 'meat') {
+        if (meatGrill.isBusy) {
+          refreshHud();
+          return true;
+        }
+        meatGrill.startFromPile();
+        worldPickables.registerRaycastTargets(meatGrill.raycastTargets);
+        refreshHud();
+        return true;
+      }
       const canAdd = burger.canAddIngredient(pick.ingredient);
       if (canAdd.ok && pick.origin) {
         const mesh = createIngredientMesh(canAdd.resolved ?? pick.ingredient);
@@ -351,7 +393,10 @@ function init() {
       z?.mesh.removeFromParent();
     }
     customerManager.resetGame();
+    meatGrill.reset();
+    worldPickables.registerRaycastTargets(meatGrill.raycastTargets);
     worldPickables.setShopOpened(false);
+    worldPickables.resetTransientState();
     hudInfoModal?.classList.remove('hud-info-modal--visible');
     hudInfoModal?.setAttribute('aria-hidden', 'true');
     refreshHud();
@@ -395,6 +440,8 @@ function init() {
       stackView.update(simDt);
       customerManager.update(simDt);
       slingshotRef?.update(simDt);
+      worldPickables.update(simDt);
+      meatGrill.update(simDt);
       floatingLayer.update(simDt);
       cameraDrift.update(simDt);
       screenShake.update(simDt);

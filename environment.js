@@ -1,5 +1,6 @@
 /**
  * Restaurant room mesh, warm lighting, and atmospheric fog.
+ * Visual style: cozy brick-walled burger joint with string lights, dark wood, and warm glow.
  */
 
 import * as THREE from 'three';
@@ -8,17 +9,14 @@ import { ROOM, ZONES, halfWidthAtZ, xLeftAtZ, xRightAtZ } from './roomConstants.
 import { getRenderProfile } from './renderQuality.js';
 
 const COLORS = {
-  floorPlayer: 0x3f4a38,
-  floorCounter: 0x4f4840,
-  floorCustomers: 0x3e4552,
-  walls: 0xe8ddd2,
-  counterTop: 0x725340,
-  counterFront: 0x5c4638,
+  floorPlayer: 0x3d2c1e,
+  floorCounter: 0x4a3524,
+  floorCustomers: 0x34292a,
+  walls: 0x6b3a2e,
+  counterTop: 0x7a4f2e,
+  counterFront: 0x3e2a1c,
 };
 
-/**
- * Builds one floor strip between zNear (closer to player, larger Z) and zFar.
- */
 function createFloorStripGeometry(zNear, zFar) {
   const xl0 = xLeftAtZ(zNear);
   const xr0 = xRightAtZ(zNear);
@@ -48,6 +46,26 @@ function standardMat(opts) {
   });
 }
 
+function brickWallMat() {
+  return new THREE.MeshStandardMaterial({
+    color: 0x7a3b2a,
+    roughness: 0.94,
+    metalness: 0.02,
+    emissive: 0x1a0c08,
+    emissiveIntensity: 0.06,
+  });
+}
+
+function darkWoodMat() {
+  return new THREE.MeshStandardMaterial({
+    color: 0x3e2a1c,
+    roughness: 0.86,
+    metalness: 0.06,
+    emissive: 0x120908,
+    emissiveIntensity: 0.04,
+  });
+}
+
 function addWallMesh(group, wallMat, name, positions, index) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -69,11 +87,10 @@ export class BackDoor {
     this.group = new THREE.Group();
     this.group.name = 'BackDoor';
     const frameMat = standardMat({
-      color: 0x5c5348,
+      color: 0x3c2e26,
       roughness: 0.55,
       metalness: 0.12,
     });
-    /** Each leaf ~2× wider than original. */
     this._panelW = 1.04;
     const panelW = this._panelW;
     const panelH = 2.38;
@@ -101,6 +118,39 @@ export class BackDoor {
   }
 }
 
+function createStringLights(group, y, zStart, zEnd, xOffset, count) {
+  const wireMat = new THREE.MeshBasicMaterial({ color: 0x1a1410 });
+  const wireGeo = new THREE.CylinderGeometry(0.012, 0.012, Math.abs(zEnd - zStart), 4);
+  wireGeo.rotateX(Math.PI / 2);
+  const wire = new THREE.Mesh(wireGeo, wireMat);
+  wire.position.set(xOffset, y, (zStart + zEnd) / 2);
+  group.add(wire);
+
+  const bulbGeo = new THREE.SphereGeometry(0.06, 8, 6);
+  const bulbMat = new THREE.MeshStandardMaterial({
+    color: 0xffe8a0,
+    emissive: 0xffcc44,
+    emissiveIntensity: 1.6,
+    roughness: 0.2,
+    metalness: 0.0,
+    transparent: true,
+    opacity: 0.95,
+  });
+
+  for (let i = 0; i < count; i++) {
+    const t = (i + 0.5) / count;
+    const z = THREE.MathUtils.lerp(zStart, zEnd, t);
+    const bulb = new THREE.Mesh(bulbGeo, bulbMat);
+    bulb.position.set(xOffset, y - 0.08, z);
+    bulb.scale.setScalar(0.8 + Math.sin(i * 1.7) * 0.15);
+    group.add(bulb);
+
+    const glow = new THREE.PointLight(0xffcc55, 0.12, 3.0, 2);
+    glow.position.copy(bulb.position);
+    group.add(glow);
+  }
+}
+
 /**
  * Trapezoidal room: merged floor, windowed walls, counter, back door.
  * @returns {{ group: THREE.Group, backDoor: BackDoor }}
@@ -109,11 +159,7 @@ export function buildRestaurantRoom() {
   const group = new THREE.Group();
   group.name = 'RestaurantRoom';
 
-  const wallMat = standardMat({
-    color: COLORS.walls,
-    roughness: 0.88,
-    metalness: 0.02,
-  });
+  const wallMat = brickWallMat();
 
   const floorMats = [
     standardMat({ color: COLORS.floorPlayer, roughness: 0.94, metalness: 0 }),
@@ -161,30 +207,12 @@ export function buildRestaurantRoom() {
     const h = ROOM.wallHeight;
     const xl0 = xLeftAtZ(z0w);
     const xl1 = xLeftAtZ(z1w);
-    addWallMesh(
-      group,
-      wallMat,
-      'WallLeft_Lower',
-      new Float32Array([
-        xl0, 0, z0w,
-        xl0, WIN_Y0, z0w,
-        xl1, WIN_Y0, z1w,
-        xl1, 0, z1w,
-      ]),
-      [0, 1, 2, 0, 2, 3],
-    );
-    addWallMesh(
-      group,
-      wallMat,
-      'WallLeft_Upper',
-      new Float32Array([
-        xl0, WIN_Y1, z0w,
-        xl0, h, z0w,
-        xl1, h, z1w,
-        xl1, WIN_Y1, z1w,
-      ]),
-      [0, 1, 2, 0, 2, 3],
-    );
+    addWallMesh(group, wallMat, 'WallLeft_Lower',
+      new Float32Array([xl0, 0, z0w, xl0, WIN_Y0, z0w, xl1, WIN_Y0, z1w, xl1, 0, z1w]),
+      [0, 1, 2, 0, 2, 3]);
+    addWallMesh(group, wallMat, 'WallLeft_Upper',
+      new Float32Array([xl0, WIN_Y1, z0w, xl0, h, z0w, xl1, h, z1w, xl1, WIN_Y1, z1w]),
+      [0, 1, 2, 0, 2, 3]);
   }
   {
     const z0w = ROOM.zFront;
@@ -192,79 +220,41 @@ export function buildRestaurantRoom() {
     const h = ROOM.wallHeight;
     const xr0 = xRightAtZ(z0w);
     const xr1 = xRightAtZ(z1w);
-    addWallMesh(
-      group,
-      wallMat,
-      'WallRight_Lower',
-      new Float32Array([
-        xr0, 0, z0w,
-        xr0, WIN_Y0, z0w,
-        xr1, WIN_Y0, z1w,
-        xr1, 0, z1w,
-      ]),
-      [0, 2, 1, 0, 3, 2],
-    );
-    addWallMesh(
-      group,
-      wallMat,
-      'WallRight_Upper',
-      new Float32Array([
-        xr0, WIN_Y1, z0w,
-        xr0, h, z0w,
-        xr1, h, z1w,
-        xr1, WIN_Y1, z1w,
-      ]),
-      [0, 2, 1, 0, 3, 2],
-    );
+    addWallMesh(group, wallMat, 'WallRight_Lower',
+      new Float32Array([xr0, 0, z0w, xr0, WIN_Y0, z0w, xr1, WIN_Y0, z1w, xr1, 0, z1w]),
+      [0, 2, 1, 0, 3, 2]);
+    addWallMesh(group, wallMat, 'WallRight_Upper',
+      new Float32Array([xr0, WIN_Y1, z0w, xr0, h, z0w, xr1, h, z1w, xr1, WIN_Y1, z1w]),
+      [0, 2, 1, 0, 3, 2]);
   }
   {
     const z = ROOM.zBack;
     const h = ROOM.wallHeight;
     const xl = xLeftAtZ(z);
     const xr = xRightAtZ(z);
-    /* Door opening ~2× wider to match double doors */
     const xm0 = -1.12;
     const xm1 = 1.12;
-    addWallMesh(
-      group,
-      wallMat,
-      'WallBack_LeftLower',
+    addWallMesh(group, wallMat, 'WallBack_LeftLower',
       new Float32Array([xl, 0, z, xl, WIN_Y0, z, xm0, WIN_Y0, z, xm0, 0, z]),
-      [0, 1, 2, 0, 2, 3],
-    );
-    addWallMesh(
-      group,
-      wallMat,
-      'WallBack_LeftUpper',
+      [0, 1, 2, 0, 2, 3]);
+    addWallMesh(group, wallMat, 'WallBack_LeftUpper',
       new Float32Array([xl, WIN_Y1, z, xl, h, z, xm0, h, z, xm0, WIN_Y1, z]),
-      [0, 1, 2, 0, 2, 3],
-    );
-    addWallMesh(
-      group,
-      wallMat,
-      'WallBack_RightLower',
+      [0, 1, 2, 0, 2, 3]);
+    addWallMesh(group, wallMat, 'WallBack_RightLower',
       new Float32Array([xm1, 0, z, xm1, WIN_Y0, z, xr, WIN_Y0, z, xr, 0, z]),
-      [0, 1, 2, 0, 2, 3],
-    );
-    addWallMesh(
-      group,
-      wallMat,
-      'WallBack_RightUpper',
+      [0, 1, 2, 0, 2, 3]);
+    addWallMesh(group, wallMat, 'WallBack_RightUpper',
       new Float32Array([xm1, WIN_Y1, z, xm1, h, z, xr, h, z, xr, WIN_Y1, z]),
-      [0, 1, 2, 0, 2, 3],
-    );
-    addWallMesh(
-      group,
-      wallMat,
-      'WallBack_Lintel',
+      [0, 1, 2, 0, 2, 3]);
+    addWallMesh(group, wallMat, 'WallBack_Lintel',
       new Float32Array([xm0, WIN_Y1, z, xm0, h, z, xm1, h, z, xm1, WIN_Y1, z]),
-      [0, 1, 2, 0, 2, 3],
-    );
+      [0, 1, 2, 0, 2, 3]);
   }
 
   const backDoor = new BackDoor();
   group.add(backDoor.group);
 
+  /* --- Counter --- */
   {
     const zPlane = ZONES.counterToCustomers + 0.32;
     const halfW = halfWidthAtZ(zPlane) * 0.92;
@@ -274,11 +264,7 @@ export function buildRestaurantRoom() {
     const zCenter = zPlane + counterDepth / 2 - 0.08;
 
     const bodyGeo = new THREE.BoxGeometry(halfW * 2, counterHeight, counterDepth);
-    const bodyMat = standardMat({
-      color: COLORS.counterFront,
-      roughness: 0.76,
-      metalness: 0.1,
-    });
+    const bodyMat = darkWoodMat();
     const body = new THREE.Mesh(bodyGeo, bodyMat);
     body.position.set(0, baseY + counterHeight / 2, zCenter);
     body.castShadow = true;
@@ -289,8 +275,10 @@ export function buildRestaurantRoom() {
     const topGeo = new THREE.BoxGeometry(halfW * 2 + 0.15, 0.08, counterDepth + 0.2);
     const topMat = standardMat({
       color: COLORS.counterTop,
-      roughness: 0.42,
-      metalness: 0.18,
+      roughness: 0.38,
+      metalness: 0.12,
+      emissive: 0x2a1808,
+      emissiveIntensity: 0.06,
     });
     const top = new THREE.Mesh(topGeo, topMat);
     top.position.set(0, baseY + counterHeight + 0.04, zCenter);
@@ -298,33 +286,56 @@ export function buildRestaurantRoom() {
     top.receiveShadow = true;
     top.name = 'CounterTop';
     group.add(top);
+
+    const trimGeo = new THREE.BoxGeometry(halfW * 2 + 0.12, 0.06, 0.04);
+    const trimMat = standardMat({
+      color: 0x594030,
+      roughness: 0.58,
+      metalness: 0.14,
+      emissive: 0x1a0f08,
+      emissiveIntensity: 0.04,
+    });
+    const trimFront = new THREE.Mesh(trimGeo, trimMat);
+    trimFront.position.set(0, baseY + counterHeight * 0.5, zCenter + counterDepth / 2 + 0.02);
+    trimFront.castShadow = true;
+    group.add(trimFront);
+
+    const trimBottom = new THREE.Mesh(trimGeo, trimMat);
+    trimBottom.position.set(0, baseY + 0.03, zCenter + counterDepth / 2 + 0.02);
+    trimBottom.castShadow = true;
+    group.add(trimBottom);
   }
+
+  /* --- String lights: above counter, along back wall area --- */
+  const counterZ = ZONES.counterToCustomers + 0.32 + 0.55 / 2 - 0.08;
+  createStringLights(group, 2.1, ROOM.zFront - 0.3, counterZ + 0.8, 0, 12);
+  createStringLights(group, 0.68, 2.8, counterZ + 1.0, -0.8, 6);
+  createStringLights(group, 0.68, 2.8, counterZ + 1.0, 0.8, 6);
 
   return { group, backDoor };
 }
 
 /**
- * Warm interior fog + background.
+ * Warm interior fog + background — darker lounge mood.
  * @param {THREE.Scene} scene
  */
 export function applyAtmosphere(scene) {
-  scene.background = new THREE.Color(0x2c2622);
-  scene.fog = new THREE.Fog(0x3a322c, 14, 38);
+  scene.background = new THREE.Color(0x1e1210);
+  scene.fog = new THREE.Fog(0x2a1a14, 12, 32);
 }
 
 /**
- * Hemisphere + key + subtle warm fill. Shadow map size follows render profile.
+ * Hemisphere + key + fills. Shadow map size follows render profile.
  * @param {THREE.Scene} scene
- * @returns {{ hemi: THREE.HemisphereLight; key: THREE.DirectionalLight; fill: THREE.PointLight }}
  */
 export function createRestaurantLights(scene) {
   const { shadowMapSize } = getRenderProfile();
 
-  const hemi = new THREE.HemisphereLight(0xffebd4, 0x4a3d36, 0.52);
+  const hemi = new THREE.HemisphereLight(0xffd8b0, 0x3a2218, 0.36);
   hemi.name = 'HemisphereLight';
   scene.add(hemi);
 
-  const key = new THREE.DirectionalLight(0xffecd8, 1.12);
+  const key = new THREE.DirectionalLight(0xffe0b8, 1.0);
   key.name = 'KeyLight';
   key.position.set(-5.5, 13.5, 7.2);
   key.castShadow = true;
@@ -341,10 +352,25 @@ export function createRestaurantLights(scene) {
   key.shadow.radius = shadowMapSize >= 2048 ? 3.2 : 2.4;
   scene.add(key);
 
-  const fill = new THREE.PointLight(0xffb878, 0.38, 22, 2);
+  const fill = new THREE.PointLight(0xffb070, 0.72, 22, 2);
   fill.name = 'WarmFill';
-  fill.position.set(0.8, 3.4, 0.5);
+  fill.position.set(0.6, 3.2, 1.2);
   scene.add(fill);
+
+  const counterGlow = new THREE.PointLight(0xffc85a, 0.56, 14, 2);
+  counterGlow.name = 'CounterGlow';
+  counterGlow.position.set(0, 2.0, 0.8);
+  scene.add(counterGlow);
+
+  const backWarm = new THREE.PointLight(0xff9050, 0.32, 16, 2);
+  backWarm.name = 'BackWarm';
+  backWarm.position.set(0, 2.6, -2.8);
+  scene.add(backWarm);
+
+  const frontAmbient = new THREE.PointLight(0xffcc80, 0.2, 10, 2);
+  frontAmbient.name = 'FrontAmbient';
+  frontAmbient.position.set(0, 1.4, 3.0);
+  scene.add(frontAmbient);
 
   return { hemi, key, fill };
 }

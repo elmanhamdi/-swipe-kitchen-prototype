@@ -16,8 +16,8 @@ const SLOT_X = [-1.42, 0, 1.42];
 const SLOT_Z = -3.22;
 /** Start at door opening (walk into / out of room). */
 const DOOR_START_Z = ROOM.zBack + 0.12;
-const WALK_DURATION = 0.68;
-const CELEBRATE_DURATION = 2;
+const WALK_DURATION = 0.5;
+const CELEBRATE_DURATION = 1;
 const BASE_ACTIVE_CUSTOMERS = 1;
 const RAMP_INTERVAL_SEC = 10;
 const RAMP_MAX_CUSTOMERS = 3;

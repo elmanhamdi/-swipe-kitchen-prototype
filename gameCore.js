@@ -18,17 +18,17 @@ export const INSANE_AIR_MIN_SEC = 3;
 /**
  * Time gain mechanic (demo):
  * Include buns; based purely on ingredient count.
- * 1st = +0.1s, 2nd = +0.2s, 3rd+ = +0.3s each (per-ingredient cap 0.5s).
+ * 1st = +0.2s, 2nd = +0.4s, 3rd+ = +0.6s each (per-ingredient cap 0.6s).
  * @param {number} ingredientCount
  */
 export function computeServeTimeBonusSeconds(ingredientCount) {
   const n = Math.max(0, Math.floor(ingredientCount));
   let s = 0;
   for (let i = 1; i <= n; i++) {
-    let b = 0.3;
-    if (i === 1) b = 0.1;
-    else if (i === 2) b = 0.2;
-    b = Math.min(0.5, Math.max(0, b));
+    let b = 0.6;
+    if (i === 1) b = 0.2;
+    else if (i === 2) b = 0.4;
+    b = Math.min(0.6, Math.max(0, b));
     s += b;
   }
   return s;

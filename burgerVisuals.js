@@ -17,6 +17,61 @@ const LAYER = {
 
 export const STACK_GAP = 0.028;
 const ORDER_PREVIEW_GAP = 0.012;
+const INGREDIENT_TEXTURE_PATHS = {
+  bun: './assets/textures/ingredients/burger-bun.png',
+  lettuce: './assets/textures/ingredients/lettuce.png',
+  tomato: './assets/textures/ingredients/tomato.png',
+  cheese: './assets/textures/ingredients/cheese.png',
+};
+
+const _textureLoader = new THREE.TextureLoader();
+const _textureCache = new Map();
+
+function getIngredientTexture(key) {
+  if (_textureCache.has(key)) return _textureCache.get(key) ?? null;
+  const path = INGREDIENT_TEXTURE_PATHS[key];
+  if (!path) return null;
+  const texture = _textureLoader.load(path);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  _textureCache.set(key, texture);
+  return texture;
+}
+
+function cloneIngredientTexture(key, transform) {
+  const base = getIngredientTexture(key);
+  if (!base) return null;
+  const texture = base.clone();
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.center.set(0.5, 0.5);
+  if (transform) transform(texture);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function makeIngredientMaterial({
+  color,
+  roughness,
+  metalness,
+  map = null,
+  transparent = false,
+  emissive = 0x000000,
+  emissiveIntensity = 0,
+}) {
+  return new THREE.MeshStandardMaterial({
+    color,
+    roughness,
+    metalness,
+    map,
+    transparent,
+    alphaTest: transparent ? 0.06 : 0,
+    emissive,
+    emissiveIntensity,
+  });
+}
 
 /**
  * Squash & stretch + scale punch on a layer group (updated each frame).
@@ -68,18 +123,45 @@ export function createTapFeedback(layerGroup) {
 
 function makeBunMesh(h, color, isTop) {
   const geo = new THREE.CylinderGeometry(0.38, 0.4, h, GEO.bunCylinder);
-  const mat = new THREE.MeshStandardMaterial({
+  const sideMat = makeIngredientMaterial({
+    color,
+    roughness: 0.76,
+    metalness: 0.05,
+    emissive: 0x31190d,
+    emissiveIntensity: 0.05,
+  });
+  const topMap = cloneIngredientTexture(
+    'bun',
+    isTop
+      ? undefined
+      : (texture) => {
+          // Crop into the fluffy center so the bottom bun reads cleaner.
+          texture.repeat.set(0.56, 0.56);
+          texture.offset.set(0.22, 0.22);
+        },
+  );
+  const topMat = makeIngredientMaterial({
+    color: topMap ? 0xffffff : color,
+    roughness: 0.72,
+    metalness: 0.05,
+    map: topMap,
+    emissive: 0x5a3213,
+    emissiveIntensity: 0.08,
+  });
+  const bottomMat = makeIngredientMaterial({
     color,
     roughness: 0.82,
-    metalness: 0.05,
+    metalness: 0.04,
+    emissive: 0x241108,
+    emissiveIntensity: 0.03,
   });
-  const mesh = new THREE.Mesh(geo, mat);
+  const mesh = new THREE.Mesh(geo, [sideMat, topMat, bottomMat]);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
-  if (isTop) {
+  if (isTop && !topMap) {
     const seedGeo = new THREE.SphereGeometry(0.06, GEO.seedSphere, GEO.seedSphere);
     for (let i = 0; i < 14; i++) {
-      const s = new THREE.Mesh(seedGeo, mat);
+      const s = new THREE.Mesh(seedGeo, sideMat.clone());
       const a = (i / 14) * Math.PI * 2;
       s.position.set(Math.cos(a) * 0.28, h * 0.35, Math.sin(a) * 0.28);
       s.scale.setScalar(0.35 + (i % 3) * 0.08);
@@ -104,12 +186,29 @@ function makePattyMesh(h, color) {
 
 function makeLettuceMesh(h, color) {
   const geo = new THREE.CylinderGeometry(0.42, 0.4, h, GEO.lettuceCylinder);
-  const mat = new THREE.MeshStandardMaterial({
+  const sideMat = makeIngredientMaterial({
     color,
-    roughness: 0.9,
+    roughness: 0.8,
     metalness: 0,
+    emissive: 0x173d18,
+    emissiveIntensity: 0.06,
   });
-  const mesh = new THREE.Mesh(geo, mat);
+  const topMat = makeIngredientMaterial({
+    color: 0xffffff,
+    roughness: 0.72,
+    metalness: 0,
+    map: cloneIngredientTexture('lettuce'),
+    emissive: 0x2f6b24,
+    emissiveIntensity: 0.12,
+  });
+  const bottomMat = makeIngredientMaterial({
+    color,
+    roughness: 0.86,
+    metalness: 0,
+    emissive: 0x143013,
+    emissiveIntensity: 0.05,
+  });
+  const mesh = new THREE.Mesh(geo, [sideMat, topMat, bottomMat]);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   return mesh;
@@ -117,12 +216,35 @@ function makeLettuceMesh(h, color) {
 
 function makeTomatoMesh(h, color) {
   const geo = new THREE.CylinderGeometry(0.37, 0.37, h, GEO.tomatoCylinder);
-  const mat = new THREE.MeshStandardMaterial({
+  const sideMat = makeIngredientMaterial({
     color,
-    roughness: 0.35,
+    roughness: 0.32,
     metalness: 0.1,
+    emissive: 0x551211,
+    emissiveIntensity: 0.08,
   });
-  const mesh = new THREE.Mesh(geo, mat);
+  const topMat = makeIngredientMaterial({
+    color: 0xffffff,
+    roughness: 0.24,
+    metalness: 0.08,
+    map: cloneIngredientTexture('tomato'),
+    transparent: true,
+    emissive: 0x6d1616,
+    emissiveIntensity: 0.08,
+  });
+  const bottomMap = cloneIngredientTexture('tomato', (texture) => {
+    texture.rotation = Math.PI;
+  });
+  const bottomMat = makeIngredientMaterial({
+    color: bottomMap ? 0xffffff : color,
+    roughness: 0.3,
+    metalness: 0.06,
+    map: bottomMap,
+    transparent: true,
+    emissive: 0x651717,
+    emissiveIntensity: 0.06,
+  });
+  const mesh = new THREE.Mesh(geo, [sideMat, topMat, bottomMat]);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   return mesh;
@@ -130,24 +252,66 @@ function makeTomatoMesh(h, color) {
 
 function makeCheeseMesh(h, color) {
   const geo = new THREE.BoxGeometry(0.76, h, 0.76);
-  const mat = new THREE.MeshStandardMaterial({
-    color,
-    roughness: 0.55,
-    metalness: 0.12,
+  const sideMaterial = () =>
+    makeIngredientMaterial({
+      color,
+      roughness: 0.48,
+      metalness: 0.12,
+      emissive: 0x4b2e08,
+      emissiveIntensity: 0.04,
+    });
+  const topMap = cloneIngredientTexture('cheese', (texture) => {
+    texture.repeat.set(0.5, 1);
+    texture.offset.set(0.25, 0);
   });
-  const mesh = new THREE.Mesh(geo, mat);
+  const topMat = makeIngredientMaterial({
+    color: topMap ? 0xffffff : color,
+    roughness: 0.38,
+    metalness: 0.1,
+    map: topMap,
+    emissive: 0x8c5b10,
+    emissiveIntensity: 0.1,
+  });
+  const bottomMat = makeIngredientMaterial({
+    color,
+    roughness: 0.52,
+    metalness: 0.08,
+    emissive: 0x5d3907,
+    emissiveIntensity: 0.04,
+  });
+  const mesh = new THREE.Mesh(geo, [
+    sideMaterial(),
+    sideMaterial(),
+    topMat,
+    bottomMat,
+    sideMaterial(),
+    sideMaterial(),
+  ]);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   return mesh;
 }
 
 export function disposeObject3D(root) {
+  const disposedMaterials = new Set();
+  const disposedTextures = new Set();
   root.traverse((o) => {
     if (o instanceof THREE.Mesh) {
       o.geometry?.dispose();
       const m = o.material;
-      if (Array.isArray(m)) m.forEach((x) => x.dispose());
-      else m?.dispose();
+      const materials = Array.isArray(m) ? m : [m];
+      materials.forEach((mat) => {
+        if (!mat || disposedMaterials.has(mat)) return;
+        disposedMaterials.add(mat);
+        ['map', 'alphaMap', 'normalMap', 'roughnessMap', 'metalnessMap'].forEach((key) => {
+          const tex = mat[key];
+          if (tex && !disposedTextures.has(tex)) {
+            disposedTextures.add(tex);
+            tex.dispose();
+          }
+        });
+        mat.dispose();
+      });
     }
   });
 }
