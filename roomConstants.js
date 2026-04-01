@@ -5,10 +5,10 @@
 import * as THREE from 'three';
 
 export const ROOM = {
-  zFront: 3.5,
-  zBack: -4.5,
-  halfWidthFront: 4.2,
-  halfWidthBack: 2.6,
+  zFront: 6.5,
+  zBack: -5.5,
+  halfWidthFront: 7,
+  halfWidthBack: 5.0,
   wallHeight: 4.2,
 };
 

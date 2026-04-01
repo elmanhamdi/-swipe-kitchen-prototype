@@ -139,6 +139,8 @@ export class SlingshotController {
    * @param {import('./audioSystem.js').GameAudio | null} [o.gameAudio]
    * @param {import('./burgerDebris.js').BurgerDebrisSystem | null} [o.debrisSystem]
    * @param {(e: PointerEvent) => boolean} [o.pickInterceptor] return true if event consumed (no aim)
+   * @param {() => boolean} [o.canStartAim]
+   * @param {() => void} [o.onAimStart]
    * @param {() => void} [o.onSettled] after projectile ends / burger returns to plate
    */
   constructor(o) {
@@ -155,9 +157,15 @@ export class SlingshotController {
     this.gameAudio = o.gameAudio ?? null;
     this.debrisSystem = o.debrisSystem ?? null;
     this._pickInterceptor = typeof o.pickInterceptor === 'function' ? o.pickInterceptor : null;
+    this._canStartAim = typeof o.canStartAim === 'function' ? o.canStartAim : null;
+    this._onAimStart = typeof o.onAimStart === 'function' ? o.onAimStart : null;
     this._onSettled = typeof o.onSettled === 'function' ? o.onSettled : null;
 
     this.counterBox = getCounterAabb();
+    this.tableBoxes = o.tableAabbs ?? [];
+    this.tableGroups = o.tableGroups ?? [];
+    /** @type {{ mesh: THREE.Object3D, pos: THREE.Vector3, vel: THREE.Vector3, angVel: THREE.Vector3, t: number }[]} */
+    this._tableDebris = [];
 
     this.mode = 'idle';
     this._pointerId = null;
@@ -175,21 +183,17 @@ export class SlingshotController {
     this._bandLine.frustumCulled = false;
     this.scene.add(this._bandLine);
 
-    this._aimDashGeom = new THREE.BufferGeometry();
-    this._aimDashLine = new THREE.Line(
-      this._aimDashGeom,
-      new THREE.LineDashedMaterial({
-        color: 0xffffff,
-        dashSize: 0.14,
-        gapSize: 0.1,
-        transparent: true,
-        opacity: 0.62,
-        depthWrite: false,
-      }),
-    );
-    this._aimDashLine.visible = false;
-    this._aimDashLine.frustumCulled = false;
-    this.scene.add(this._aimDashLine);
+    this._aimTubeGeom = new THREE.BufferGeometry();
+    this._aimTubeMat = new THREE.MeshBasicMaterial({
+      color: 0x67d8ff,
+      transparent: true,
+      opacity: 0.42,
+      depthWrite: false,
+    });
+    this._aimTube = new THREE.Mesh(this._aimTubeGeom, this._aimTubeMat);
+    this._aimTube.visible = false;
+    this._aimTube.frustumCulled = false;
+    this.scene.add(this._aimTube);
 
     this._flightTrailGeom = new THREE.BufferGeometry();
     this._flightTrailMat = new THREE.LineBasicMaterial({
@@ -212,6 +216,7 @@ export class SlingshotController {
 
     this._onPointerDown = (e) => {
       if (this._pickInterceptor?.(e)) return;
+      if (this._canStartAim && !this._canStartAim()) return;
       if (this.mode !== 'idle' || e.button > 0) return;
       if (!this.gameSession.canPlay()) return;
       if (this.burger.getStack().length === 0) return;
@@ -219,12 +224,13 @@ export class SlingshotController {
       e.preventDefault();
       this.mode = 'aiming';
       this._pointerId = e.pointerId;
+      this._onAimStart?.();
       this.domElement.setPointerCapture(e.pointerId);
       this._updateAnchorWorld();
       this._screenToWorldOnPlane(e.clientX, e.clientY, this._anchorWorld.y, this._pullWorld);
       this._refreshAimLines();
       this._bandLine.visible = true;
-      this._aimDashLine.visible = true;
+      this._aimTube.visible = true;
     };
 
     this._onPointerMove = (e) => {
@@ -295,9 +301,9 @@ export class SlingshotController {
     this._bandGeom.dispose();
     this._bandLine.material.dispose();
     this.scene.remove(this._bandLine);
-    this._aimDashGeom.dispose();
-    this._aimDashLine.material.dispose();
-    this.scene.remove(this._aimDashLine);
+    this._aimTube.geometry.dispose();
+    this._aimTubeMat.dispose();
+    this.scene.remove(this._aimTube);
     this._flightTrailGeom.dispose();
     this._flightTrailMat.dispose();
     this.scene.remove(this._flightTrailLine);
@@ -344,15 +350,21 @@ export class SlingshotController {
     if (vel.length() > maxSpeed) vel.setLength(maxSpeed);
 
     const pts = simulateTrajectoryPoints(this._anchorWorld.clone(), vel, 2.8, 1 / 60);
-    this._aimDashGeom.setFromPoints(pts);
-    this._aimDashGeom.attributes.position.needsUpdate = true;
-    this._aimDashLine.computeLineDistances();
+    this._aimTube.geometry.dispose();
+    if (pts.length >= 2) {
+      const curve = new THREE.CatmullRomCurve3(pts);
+      this._aimTube.geometry = new THREE.TubeGeometry(curve, Math.max(12, pts.length * 2), 0.045, 10, false);
+      this._aimTube.visible = true;
+    } else {
+      this._aimTube.geometry = new THREE.BufferGeometry();
+      this._aimTube.visible = false;
+    }
   }
 
   _cancelAim() {
     this.mode = 'idle';
     this._bandLine.visible = false;
-    this._aimDashLine.visible = false;
+    this._aimTube.visible = false;
   }
 
   /**
@@ -372,7 +384,7 @@ export class SlingshotController {
     this.stackView.stackRoot.visible = false;
 
     this._bandLine.visible = false;
-    this._aimDashLine.visible = false;
+    this._aimTube.visible = false;
     this.mode = 'busy';
 
     this._flightTrailPts.length = 0;
@@ -487,10 +499,100 @@ export class SlingshotController {
     this._finishThrow();
   }
 
+  _scatterTable(tableIndex, impactPos) {
+    const tg = this.tableGroups[tableIndex];
+    if (!tg || tg.userData._scattered) return;
+    tg.userData._scattered = true;
+
+    const pieces = [...tg.children];
+    const wp = new THREE.Vector3();
+    const wq = new THREE.Quaternion();
+    const ws = new THREE.Vector3();
+
+    pieces.forEach((child) => {
+      child.getWorldPosition(wp);
+      child.getWorldQuaternion(wq);
+      child.getWorldScale(ws);
+
+      tg.remove(child);
+      this.scene.add(child);
+      child.position.copy(wp);
+      child.quaternion.copy(wq);
+      child.scale.copy(ws);
+
+      const dir = wp.clone().sub(impactPos);
+      if (dir.lengthSq() < 0.01) dir.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+      dir.y = 0.3 + Math.random() * 0.5;
+      dir.normalize();
+
+      const speed = 3 + Math.random() * 5;
+      const vel = dir.multiplyScalar(speed);
+      vel.y += 2 + Math.random() * 3;
+
+      this._tableDebris.push({
+        mesh: child,
+        pos: wp.clone(),
+        vel,
+        angVel: new THREE.Vector3(
+          (Math.random() - 0.5) * 6,
+          (Math.random() - 0.5) * 6,
+          (Math.random() - 0.5) * 6,
+        ),
+        t: 0,
+      });
+    });
+
+    tg.removeFromParent();
+    this.tableBoxes[tableIndex] = null;
+  }
+
+  _updateTableDebris(dt) {
+    const G_Y = -18;
+    for (let i = this._tableDebris.length - 1; i >= 0; i--) {
+      const p = this._tableDebris[i];
+      p.t += dt;
+
+      if (p.t < 3.5) {
+        p.vel.y += G_Y * dt;
+        p.vel.multiplyScalar(Math.exp(-0.6 * dt));
+        p.pos.addScaledVector(p.vel, dt);
+
+        p.mesh.rotation.x += p.angVel.x * dt;
+        p.mesh.rotation.y += p.angVel.y * dt;
+        p.mesh.rotation.z += p.angVel.z * dt;
+
+        if (p.pos.y < 0.06) {
+          p.pos.y = 0.06;
+          p.vel.y = Math.abs(p.vel.y) * 0.25;
+          p.vel.x *= 0.6;
+          p.vel.z *= 0.6;
+          p.angVel.multiplyScalar(0.5);
+        }
+        p.mesh.position.copy(p.pos);
+      } else {
+        const fade = Math.min(1, (p.t - 3.5) / 1.0);
+        if (fade >= 1) {
+          p.mesh.removeFromParent();
+          this._tableDebris.splice(i, 1);
+          continue;
+        }
+        const s = 1 - fade;
+        p.mesh.scale.multiplyScalar(0.97);
+        p.mesh.traverse((o) => {
+          if (o.isMesh && o.material && !Array.isArray(o.material)) {
+            o.material.transparent = true;
+            o.material.opacity = s;
+          }
+        });
+      }
+    }
+  }
+
   /**
    * @param {number} dt
    */
   update(dt) {
+    this._updateTableDebris(dt);
     if (this._splash && updateSplash(this._splash, dt)) {
       this._splash = null;
     }
@@ -601,6 +703,15 @@ export class SlingshotController {
         new THREE.Vector3(0, 1, 0),
       );
       return;
+    }
+
+    for (let ti = 0; ti < this.tableBoxes.length; ti++) {
+      if (this.tableBoxes[ti] && sphereVsAabb(p.pos, p.r, this.tableBoxes[ti])) {
+        this._scatterTable(ti, p.pos.clone());
+        this.gameAudio?.playTableCrash();
+        this._failImpact('wall', p.pos.clone(), new THREE.Vector3(0, 1, 0));
+        return;
+      }
     }
 
     if (resolveWalls(p.pos, p.r, _wallN)) {

@@ -12,7 +12,8 @@ const LAYER = {
   lettuce: { h: 0.045, color: 0x4a9f5c },
   tomato: { h: 0.035, color: 0xc93c3c },
   cheese: { h: 0.028, color: 0xf0c040 },
-  meat: { h: 0.09, color: 0x6b4423 },
+  meat: { h: 0.09, color: 0x8b2d1a },
+  meat_cooked: { h: 0.09, color: 0x6b4028 },
 };
 
 export const STACK_GAP = 0.028;
@@ -173,32 +174,35 @@ function makeBunMesh(h, color, isTop) {
 }
 
 function makePattyMesh(h, color) {
+  const isCooked = color === 0x6b4028;
+  // Raw: reddish tint on texture; Cooked: warm brown tint on texture
+  const faceTint = isCooked ? 0xb08060 : 0xffc0b0;
   const geo = new THREE.CylinderGeometry(0.36, 0.37, h, GEO.pattyCylinder);
   const sideMat = makeIngredientMaterial({
     color,
     roughness: 0.95,
     metalness: 0,
-    emissive: 0x221109,
-    emissiveIntensity: 0.06,
+    emissive: isCooked ? 0x1a0e08 : 0x3a1008,
+    emissiveIntensity: isCooked ? 0.05 : 0.08,
   });
   const topMat = makeIngredientMaterial({
-    color: 0xffffff,
-    roughness: 0.88,
+    color: faceTint,
+    roughness: isCooked ? 0.9 : 0.85,
     metalness: 0,
     map: cloneIngredientTexture('meat'),
-    emissive: 0x3b1d12,
-    emissiveIntensity: 0.08,
+    emissive: isCooked ? 0x201008 : 0x3b1d12,
+    emissiveIntensity: isCooked ? 0.06 : 0.08,
   });
   const bottomMap = cloneIngredientTexture('meat', (texture) => {
     texture.rotation = Math.PI;
   });
   const bottomMat = makeIngredientMaterial({
-    color: bottomMap ? 0xffffff : color,
-    roughness: 0.9,
+    color: bottomMap ? faceTint : color,
+    roughness: isCooked ? 0.92 : 0.88,
     metalness: 0,
     map: bottomMap,
-    emissive: 0x2a150c,
-    emissiveIntensity: 0.05,
+    emissive: isCooked ? 0x1a0c06 : 0x2a150c,
+    emissiveIntensity: isCooked ? 0.05 : 0.05,
   });
   const mesh = new THREE.Mesh(geo, [sideMat, topMat, bottomMat]);
   mesh.castShadow = true;
@@ -350,10 +354,11 @@ export function buildOrderPreviewGroup(order, scale = 0.68) {
   /* Extra air between layers so each ingredient reads clearly */
   const gap = ORDER_PREVIEW_GAP * scale;
   order.forEach((type) => {
-    const rawH = getLayerHeight(type);
+    const visualType = type === 'meat' ? 'meat_cooked' : type;
+    const rawH = getLayerHeight(visualType);
     const h = rawH * scale;
     const layer = new THREE.Group();
-    const mesh = createIngredientMesh(type);
+    const mesh = createIngredientMesh(visualType);
     mesh.scale.setScalar(scale);
     layer.add(mesh);
     y += h / 2;
@@ -378,6 +383,7 @@ export function createIngredientMesh(type) {
     case 'bun_top':
       return makeBunMesh(spec.h, spec.color, true);
     case 'meat':
+    case 'meat_cooked':
       return makePattyMesh(spec.h, spec.color);
     case 'lettuce':
       return makeLettuceMesh(spec.h, spec.color);
@@ -462,6 +468,8 @@ export function createPlate() {
   inner.receiveShadow = true;
   group.add(inner);
 
+  group.scale.setScalar(1.2);
+
   return group;
 }
 
@@ -497,11 +505,12 @@ export class BurgerStackView {
     const animateLast = Boolean(opts.animateLast);
 
     stack.forEach((type, index) => {
-      const h = getLayerHeight(type);
+      const visualType = type === 'meat' ? 'meat_cooked' : type;
+      const h = getLayerHeight(visualType);
       y += h / 2;
       const layerGroup = new THREE.Group();
       layerGroup.name = `Layer_${type}_${index}`;
-      const mesh = createIngredientMesh(type);
+      const mesh = createIngredientMesh(visualType);
       layerGroup.add(mesh);
       layerGroup.position.y = y;
       this.stackRoot.add(layerGroup);

@@ -21,7 +21,7 @@ function getPileAccentColor(pickKey) {
     case 'cheese':
       return 0xf2bf4a;
     case 'meat':
-      return 0x8a5737;
+      return 0x9b3d24;
     case 'bun':
       return 0xd4a05d;
     default:
@@ -55,6 +55,7 @@ export class WorldPickables {
 
     /** @type {THREE.Object3D[]} */
     this._meshes = [];
+    this._pileRoots = new Map();
     this._trashShakeT = 0;
     this._trashLid = null;
     const deskTex = new THREE.TextureLoader().load('./assets/textures/desk.png');
@@ -201,6 +202,18 @@ export class WorldPickables {
   }
 
   /**
+   * @param {string} pickKey
+   * @param {THREE.Vector3} [out]
+   */
+  getIngredientWorldPosition(pickKey, out = new THREE.Vector3()) {
+    const root = this._pileRoots.get(pickKey);
+    if (!root) return out.set(0, 0, 0);
+    root.getWorldPosition(out);
+    out.y += 0.26;
+    return out;
+  }
+
+  /**
    * @param {string} pickKey `bun` | ingredient id
    * @param {number} lx
    * @param {number} lz
@@ -251,6 +264,7 @@ export class WorldPickables {
     }
     g.position.set(lx, ly, lz);
     this.group.add(g);
+    this._pileRoots.set(pickKey, g);
   }
 
   /**
@@ -268,7 +282,11 @@ export class WorldPickables {
     _ray.setFromCamera(_ndc, camera);
     const hits = _ray.intersectObjects(this._meshes, true);
     if (!hits.length) return null;
-    const info = findPickRoot(hits[0].object);
+    let info = null;
+    for (const hit of hits) {
+      info = findPickRoot(hit.object);
+      if (info) break;
+    }
     if (!info) return null;
     if (info.kind === 'open') return { openShop: true };
     if (info.kind === 'grillPatty') return { grillPatty: true, grillPattyMesh: info.root };

@@ -24,6 +24,9 @@ export const AUDIO_LEVELS = {
   tickTock: 0.4,
   sizzle: 0.07,
   grillDing: 0.5,
+  bell: 0.6,
+  tableCrash: 0.28,
+  mumble: 0.32,
 };
 
 const MUSIC_TRACK_URL = './assets/O%20P%20Baron%20-%20Welcome%20to%20Our%20Show.mp3';
@@ -122,6 +125,22 @@ function createTrashBuffer(ctx, durationSec = 0.2) {
     const slide = Math.sin(2 * Math.PI * (420 - t * 900) * t) * 0.35;
     const scrape = (Math.random() * 2 - 1) * 0.25;
     d[i] = (slide + scrape) * env * 0.5;
+  }
+  return buffer;
+}
+
+function createTableCrashBuffer(ctx, durationSec = 0.35) {
+  const sr = ctx.sampleRate;
+  const n = Math.floor(sr * durationSec);
+  const buffer = ctx.createBuffer(1, n, sr);
+  const d = buffer.getChannelData(0);
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const env = Math.exp(-t * 8) * (1 - t / durationSec);
+    const thump = Math.sin(2 * Math.PI * 80 * t) * 0.3 * Math.exp(-t * 14);
+    const rattle = (Math.random() * 2 - 1) * 0.18 * Math.exp(-t * 5);
+    const wood = Math.sin(2 * Math.PI * 220 * t) * 0.08 * Math.exp(-t * 18);
+    d[i] = (thump + rattle + wood) * env * 0.4;
   }
   return buffer;
 }
@@ -301,21 +320,20 @@ function createBouncyLoopBuffer(ctx, durationSec = 32) {
 }
 
 /** Short cheerful “time up” sting. */
-function createTimeUpBuffer(ctx, durationSec = 0.52) {
+function createTimeUpBuffer(ctx, durationSec = 0.45) {
   const sr = ctx.sampleRate;
   const n = Math.floor(sr * durationSec);
   const buffer = ctx.createBuffer(1, n, sr);
   const d = buffer.getChannelData(0);
-  const freqs = [392, 493.88, 587.33, 659.25];
   for (let i = 0; i < n; i++) {
     const t = i / sr;
-    const env = Math.exp(-t * 2.2) * (1 - t / durationSec);
-    let s = 0;
-    freqs.forEach((f, k) => {
-      const st = k * 0.09;
-      if (t >= st) s += Math.sin(2 * Math.PI * f * (t - st)) * (0.12 - k * 0.018);
-    });
-    d[i] = s * env;
+    const fadeIn = Math.min(1, t / 0.02);
+    const fadeOut = Math.max(0, 1 - Math.max(0, t - (durationSec - 0.08)) / 0.08);
+    const env = fadeIn * fadeOut;
+    const buzz = Math.sign(Math.sin(2 * Math.PI * 120 * t)) * 0.12;
+    const tone = Math.sin(2 * Math.PI * 185 * t) * 0.10;
+    const hi = Math.sin(2 * Math.PI * 370 * t) * 0.04;
+    d[i] = (buzz + tone + hi) * env * 0.55;
   }
   return buffer;
 }
@@ -373,6 +391,38 @@ function createGrillDingBuffer(ctx, durationSec = 0.35) {
   return buffer;
 }
 
+/** Kitchen-timer bell — warm metallic double-ding with shimmer. */
+function createBellBuffer(ctx, durationSec = 2.2) {
+  const sr = ctx.sampleRate;
+  const n = Math.floor(sr * durationSec);
+  const buffer = ctx.createBuffer(1, n, sr);
+  const d = buffer.getChannelData(0);
+  const strikes = [0, 0.3, 0.6, 1.0, 1.3];
+  const f0 = 680;
+  const partials = [
+    { ratio: 1.0,  amp: 0.40, decay: 3.0 },
+    { ratio: 1.5,  amp: 0.12, decay: 4.5 },
+    { ratio: 2.0,  amp: 0.20, decay: 5.0 },
+    { ratio: 2.71, amp: 0.08, decay: 7.0 },
+    { ratio: 3.6,  amp: 0.04, decay: 9.0 },
+  ];
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    let s = 0;
+    for (const st of strikes) {
+      if (t < st) continue;
+      const dt = t - st;
+      const hitEnv = Math.min(1, dt * 800) * Math.exp(-dt * 1.5);
+      for (const p of partials) {
+        s += p.amp * hitEnv * Math.exp(-dt * p.decay) *
+          Math.sin(2 * Math.PI * f0 * p.ratio * dt);
+      }
+    }
+    d[i] = Math.max(-1, Math.min(1, s * 0.85));
+  }
+  return buffer;
+}
+
 /**
  * Continuous oil-sizzle loop — filtered noise with random crackle pops.
  * Designed to loop seamlessly.
@@ -420,6 +470,92 @@ function createSizzleBuffer(ctx, durationSec = 2.0) {
   return buffer;
 }
 
+/**
+ * Procedural gibberish syllable — gender-aware unique voices.
+ * Deep grumbly males, sweet high-pitched females, wide variety.
+ * @param {AudioContext} ctx
+ * @param {{ pitch: number, formantShift: number, breathiness: number, speed: number, warmth: number }} voice
+ */
+function createMumbleBuffer(ctx, voice) {
+  const sr = ctx.sampleRate;
+  const syllCount = 1 + Math.floor(Math.random() * 3);
+  const syllDur = (0.08 + Math.random() * 0.06) / voice.speed;
+  const gapDur = (0.02 + Math.random() * 0.025) / voice.speed;
+  const totalDur = syllCount * (syllDur + gapDur) + 0.015;
+  const n = Math.floor(sr * totalDur);
+  const buffer = ctx.createBuffer(1, n, sr);
+  const d = buffer.getChannelData(0);
+
+  const isDeep = voice.pitch < 250;
+
+  const contour = Math.random();
+  const pitches = [];
+  for (let si = 0; si < syllCount; si++) {
+    let p = voice.pitch;
+    if (contour < 0.35) p *= 1 + si * 0.08;
+    else if (contour < 0.65) p *= 1.06 - si * 0.05;
+    else p *= 1 + Math.sin((si / Math.max(1, syllCount - 1)) * Math.PI) * 0.14;
+    p *= 0.93 + Math.random() * 0.14;
+    pitches.push(p);
+  }
+
+  const w = voice.warmth;
+  const vowelSets = isDeep ? [
+    // Deep voices: richer harmonics, more 2nd/3rd partial for "grumble" character
+    [1.0, 0.60 * w, 0.35 * w, 0.20 * w, 0.10],
+    [0.90, 0.70 * w, 0.25 * w, 0.30 * w, 0.08],
+    [0.85, 0.50 * w, 0.40 * w, 0.15 * w, 0.12],
+    [0.95, 0.55 * w, 0.30 * w, 0.25 * w, 0.06],
+  ] : [
+    // High voices: fundamental-dominant, gentle upper partials for sweetness
+    [1.0, 0.30 * w, 0.08 * w, 0.03],
+    [0.92, 0.40 * w, 0.06 * w, 0.05],
+    [0.88, 0.22 * w, 0.14 * w, 0.02],
+    [0.95, 0.35 * w, 0.10 * w, 0.06],
+    [0.85, 0.45 * w, 0.05 * w, 0.04],
+  ];
+
+  let phase = 0;
+  const period = syllDur + gapDur;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const syllIdx = Math.min(syllCount - 1, Math.floor(t / period));
+    const localT = t - syllIdx * period;
+
+    if (localT > syllDur || syllIdx >= syllCount) { d[i] = 0; continue; }
+
+    const u = localT / syllDur;
+
+    // Deep voices: punchier attack; high voices: soft bell
+    const env = isDeep
+      ? Math.min(1, u * 24) * Math.pow(Math.max(0, 1 - u), 0.55)
+      : Math.sin(u * Math.PI) * (1 - u * 0.18);
+
+    // Pitch glide — deep voices drop down, high voices slide up
+    const glide = isDeep ? (1 + (1 - u) * 0.04) : (1 - (1 - u) * 0.05);
+    const freq = pitches[syllIdx] * glide;
+    phase += (2 * Math.PI * freq) / sr;
+
+    const vowel = vowelSets[(syllIdx + Math.floor(voice.pitch * 0.031)) % vowelSets.length];
+
+    let s = 0;
+    for (let k = 0; k < vowel.length; k++) {
+      s += vowel[k] * Math.sin(phase * (k + 1));
+    }
+    s *= voice.formantShift;
+
+    // Deep voices: slower wobble; high voices: gentle vibrato
+    const vibRate = isDeep ? 14 : 24;
+    const vibAmp = isDeep ? 0.07 : 0.04;
+    s *= 1 + Math.sin(t * Math.PI * vibRate) * vibAmp;
+
+    s += (Math.random() * 2 - 1) * voice.breathiness * (isDeep ? 0.14 : 0.08);
+
+    d[i] = Math.max(-1, Math.min(1, s * env * 0.55));
+  }
+  return buffer;
+}
+
 function playOneShot(audio, vol) {
   if (!audio || !audio.buffer) return;
   try {
@@ -454,6 +590,7 @@ export class GameAudio {
     this._sizzle = null;
     this._sizzlePlaying = false;
     this._grillDing = null;
+    this._bell = null;
     /** @type {THREE.Audio | null} */
     this._music = null;
     this._musicReady = false;
@@ -485,6 +622,8 @@ export class GameAudio {
       tickTock: createTickTockBuffer(ctx),
       sizzle: createSizzleBuffer(ctx),
       grillDing: createGrillDingBuffer(ctx),
+      bell: createBellBuffer(ctx),
+      tableCrash: createTableCrashBuffer(ctx),
     };
 
     for (let i = 0; i < 6; i++) {
@@ -508,6 +647,9 @@ export class GameAudio {
     this._trash = new THREE.Audio(this.listener);
     this._trash.setBuffer(this._buffers.trash);
 
+    this._tableCrash = new THREE.Audio(this.listener);
+    this._tableCrash.setBuffer(this._buffers.tableCrash);
+
     this._timeUp = new THREE.Audio(this.listener);
     this._timeUp.setBuffer(this._buffers.timeUp);
     this._timeGain = new THREE.Audio(this.listener);
@@ -522,6 +664,9 @@ export class GameAudio {
 
     this._grillDing = new THREE.Audio(this.listener);
     this._grillDing.setBuffer(this._buffers.grillDing);
+
+    this._bell = new THREE.Audio(this.listener);
+    this._bell.setBuffer(this._buffers.bell);
 
     this._music = new THREE.Audio(this.listener);
     this._music.setLoop(true);
@@ -657,6 +802,10 @@ export class GameAudio {
     playOneShot(this._trash, this._sfxVol('trash'));
   }
 
+  playTableCrash() {
+    playOneShot(this._tableCrash, this._sfxVol('tableCrash'));
+  }
+
   playTimeUp() {
     playOneShot(this._timeUp, this._sfxVol('timeUp'));
   }
@@ -671,6 +820,19 @@ export class GameAudio {
 
   playGrillDing() {
     playOneShot(this._grillDing, this._sfxVol('grillDing'));
+  }
+
+  playBell() {
+    playOneShot(this._bell, this._sfxVol('bell'));
+  }
+
+  dimMusic() {
+    if (!this._music) return;
+    this._music.setVolume(this.levels.master * this.levels.music * 0.35);
+  }
+
+  restoreMusicVolume() {
+    this._applyMusicVolume();
   }
 
   startSizzle() {
@@ -690,5 +852,27 @@ export class GameAudio {
     if (this._sizzle && this._sizzlePlaying) {
       this._sizzle.setVolume(this.levels.master * this.levels.sfx * this.levels.sizzle);
     }
+  }
+
+  /**
+   * Fire-and-forget procedural gibberish with per-character voice.
+   * @param {{ pitch: number, formantShift: number, breathiness: number, speed: number }} voiceProfile
+   */
+  playMumble(voiceProfile) {
+    if (!this.listener) return;
+    const ctx = this.listener.context;
+    if (ctx.state !== 'running') return;
+
+    const vol = this._sfxVol('mumble');
+    if (vol <= 0) return;
+
+    const buf = createMumbleBuffer(ctx, voiceProfile);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const gain = ctx.createGain();
+    gain.gain.value = vol;
+    src.connect(gain);
+    gain.connect(this.listener.getInput());
+    src.start();
   }
 }

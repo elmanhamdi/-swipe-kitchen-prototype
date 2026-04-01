@@ -19,6 +19,7 @@ import { MeatGrill } from './meatGrill.js';
 
 const STAGE_SELECTOR = '#canvas-stage';
 const CAMERA_REST = new THREE.Vector3(0, 7.35, 8.85);
+const TUTORIAL_FIRST_ORDER = ['bun_bottom', 'meat', 'cheese', 'bun_top'];
 
 function init() {
   configureForDevice();
@@ -57,7 +58,7 @@ function init() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, pixelRatioMax));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.2;
+  renderer.toneMappingExposure = 1.25;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.shadowMap.autoUpdate = true;
@@ -65,10 +66,10 @@ function init() {
 
   createRestaurantLights(scene);
 
-  const { group: roomGroup, backDoor } = buildRestaurantRoom();
+  const { group: roomGroup, backDoor, tableAabbs, tableGroups } = buildRestaurantRoom();
   scene.add(roomGroup);
 
-  const customerManager = new CustomerManager(scene, backDoor);
+  const customerManager = new CustomerManager(scene, backDoor, gameAudio);
 
   const burger = new Burger();
   const playArea = new THREE.Group();
@@ -104,6 +105,7 @@ function init() {
   const gameOverCoinsEl = document.getElementById('game-over-coins');
   const playAgainBtn = document.getElementById('play-again-btn');
   const startCookingBtn = document.getElementById('start-cooking-btn');
+  const tutorialGuideEl = document.getElementById('tutorial-guide');
   const hudInfoBtn = document.getElementById('hud-info-btn');
   const hudInfoModal = document.getElementById('hud-info-modal');
   const hudInfoClose = document.getElementById('hud-info-close');
@@ -120,6 +122,157 @@ function init() {
   let gameOverOverlayShown = false;
   let lastTickTockTime = 0;
   const TICK_TOCK_THRESHOLD = 10;
+  let tutorialStep = 'start_button';
+  let tutorialRoundStarted = false;
+  const tutorialWorldPos = new THREE.Vector3();
+  const tutorialScreenPos = new THREE.Vector3();
+
+  function isTutorialActive() {
+    return tutorialStep !== 'off';
+  }
+
+  function hideTutorialGuide() {
+    if (!tutorialGuideEl) return;
+    tutorialGuideEl.hidden = true;
+    tutorialGuideEl.classList.remove('tutorial-guide--visible');
+    tutorialGuideEl.classList.remove('tutorial-guide--drag');
+  }
+
+  function endTutorial() {
+    tutorialStep = 'off';
+    hideTutorialGuide();
+  }
+
+  function positionTutorialAtStage(x, y) {
+    if (!tutorialGuideEl) return;
+    tutorialGuideEl.hidden = false;
+    tutorialGuideEl.classList.add('tutorial-guide--visible');
+    tutorialGuideEl.classList.toggle('tutorial-guide--drag', tutorialStep === 'throw_drag');
+    tutorialGuideEl.style.left = `${x.toFixed(1)}px`;
+    tutorialGuideEl.style.top = `${y.toFixed(1)}px`;
+  }
+
+  function positionTutorialAtElement(el, anchorX = 0.78, anchorY = 0.72) {
+    if (!el) return;
+    const stageRect = stage.getBoundingClientRect();
+    const rect = el.getBoundingClientRect();
+    positionTutorialAtStage(
+      rect.left - stageRect.left + rect.width * anchorX,
+      rect.top - stageRect.top + rect.height * anchorY,
+    );
+  }
+
+  function positionTutorialAtWorld(worldPos) {
+    tutorialScreenPos.copy(worldPos).project(camera);
+    const x = ((tutorialScreenPos.x + 1) * 0.5) * stage.clientWidth;
+    const y = ((1 - tutorialScreenPos.y) * 0.5) * stage.clientHeight;
+    positionTutorialAtStage(x, y);
+  }
+
+  function syncTutorialAfterIngredientAdded(type) {
+    if (!isTutorialActive()) return;
+    if (tutorialStep === 'bun_bottom' && type === 'bun_bottom') {
+      tutorialStep = 'meat_start';
+    } else if (tutorialStep === 'meat_stack_wait' && type === 'meat') {
+      tutorialStep = 'cheese';
+    } else if (tutorialStep === 'cheese' && type === 'cheese') {
+      tutorialStep = 'bun_top';
+    } else if (tutorialStep === 'bun_top' && type === 'bun_top') {
+      tutorialStep = 'throw_drag';
+    }
+  }
+
+  function tutorialBlocksPick(pick) {
+    if (!isTutorialActive() || !gameSession.shopIsOpen) return false;
+    switch (tutorialStep) {
+      case 'bun_bottom':
+        return pick.ingredient !== 'bun';
+      case 'meat_start':
+        return pick.ingredient !== 'meat';
+      case 'meat_flip_wait':
+        return true;
+      case 'meat_flip':
+        return !pick.grillPatty;
+      case 'meat_collect_wait':
+        return true;
+      case 'meat_collect':
+        return !pick.grillPatty;
+      case 'meat_stack_wait':
+        return true;
+      case 'cheese':
+        return pick.ingredient !== 'cheese';
+      case 'bun_top':
+        return pick.ingredient !== 'bun';
+      default:
+        return false;
+    }
+  }
+
+  function updateTutorialGuide() {
+    if (!tutorialGuideEl) return;
+    if (!isTutorialActive() || gameSession.gameOver) {
+      hideTutorialGuide();
+      return;
+    }
+
+    if (tutorialStep === 'start_button') {
+      hideTutorialGuide();
+      return;
+    }
+
+    if (!gameSession.shopIsOpen) {
+      hideTutorialGuide();
+      return;
+    }
+
+    if (tutorialStep === 'meat_flip_wait') {
+      if (meatGrill.getPrimarySlotState() === 'readyToFlip') tutorialStep = 'meat_flip';
+      else {
+        hideTutorialGuide();
+        return;
+      }
+    }
+
+    if (tutorialStep === 'meat_collect_wait') {
+      if (meatGrill.hasServedPatty) tutorialStep = 'meat_collect';
+      else {
+        hideTutorialGuide();
+        return;
+      }
+    }
+
+    if (tutorialStep === 'meat_stack_wait') {
+      hideTutorialGuide();
+      return;
+    }
+
+    switch (tutorialStep) {
+      case 'bun_bottom':
+      case 'bun_top':
+        positionTutorialAtWorld(worldPickables.getIngredientWorldPosition('bun', tutorialWorldPos).add(new THREE.Vector3(0.2, 0, 0)));
+        break;
+      case 'meat_start':
+        positionTutorialAtWorld(worldPickables.getIngredientWorldPosition('meat', tutorialWorldPos).add(new THREE.Vector3(0.1, 0, 0)));
+        break;
+      case 'meat_flip':
+        positionTutorialAtWorld(meatGrill.getPrimarySlotWorldPosition(tutorialWorldPos).add(new THREE.Vector3(0.1, -0.6, 0)));
+        break;
+      case 'meat_collect':
+        positionTutorialAtWorld(meatGrill.getServePlateWorldPosition(tutorialWorldPos).add(new THREE.Vector3(0.1, -0.6, 0)));
+        break;
+      case 'cheese':
+        positionTutorialAtWorld(worldPickables.getIngredientWorldPosition('cheese', tutorialWorldPos));
+        break;
+      case 'throw_drag':
+        stackAnchor.getWorldPosition(tutorialWorldPos);
+        tutorialWorldPos.y += 0.28;
+        positionTutorialAtWorld(tutorialWorldPos);
+        break;
+      default:
+        hideTutorialGuide();
+        break;
+    }
+  }
 
   function refreshClockAndEconomy() {
     const total = gameSession.totalCoins;
@@ -229,6 +382,10 @@ function init() {
       window.clearTimeout(startButtonPressTimer);
       startButtonPressTimer = 0;
     }
+    if (tutorialStep === 'start_button') {
+      customerManager.setNextCustomerOrder(TUTORIAL_FIRST_ORDER);
+      tutorialRoundStarted = true;
+    }
     gameSession.openShop();
     customerManager.beginGameplay();
     worldPickables.setShopOpened(true);
@@ -239,6 +396,7 @@ function init() {
       shopSplash.classList.add('shop-open-splash--show');
       window.setTimeout(() => shopSplash.classList.remove('shop-open-splash--show'), 900);
     }
+    if (tutorialStep === 'start_button') tutorialStep = 'bun_bottom';
     refreshHud();
   }
 
@@ -312,6 +470,9 @@ function init() {
     if (!gameSession.canPlay()) {
       return true;
     }
+    if (tutorialBlocksPick(pick)) {
+      return true;
+    }
     if (pick.trash) {
       if (slingshotRef?.isBusy()) return true;
       const hadStack = burger.getStack().length > 0;
@@ -333,7 +494,7 @@ function init() {
         if (canAdd.ok) {
           meatGrill.completeServe();
           const resolved = canAdd.resolved ?? 'meat';
-          const mesh = createIngredientMesh(resolved);
+          const mesh = createIngredientMesh('meat_cooked');
           const grillWorldPos = new THREE.Vector3();
           meatGrill._pattyPivot.getWorldPosition(grillWorldPos);
           mesh.position.copy(grillWorldPos);
@@ -344,7 +505,10 @@ function init() {
           end.y += 0.22;
           ingredientZips.push({ mesh, start: grillWorldPos.clone(), end, t: 0, dur: 0.22, ingredient: resolved });
           worldPickables.registerRaycastTargets(meatGrill.raycastTargets);
+          if (tutorialStep === 'meat_collect') tutorialStep = 'meat_stack_wait';
         }
+      } else if (result === 'flipped' && tutorialStep === 'meat_flip') {
+        tutorialStep = 'meat_collect_wait';
       }
       refreshHud();
       return true;
@@ -358,6 +522,7 @@ function init() {
         }
         meatGrill.startFromPile();
         worldPickables.registerRaycastTargets(meatGrill.raycastTargets);
+        if (tutorialStep === 'meat_start') tutorialStep = 'meat_flip_wait';
         refreshHud();
         return true;
       }
@@ -386,6 +551,7 @@ function init() {
           gameAudio.playTap();
           stackView.rebuildFromStack(burger.getStack(), { animateLast: true });
           if (burger.getStack().length === 1) gameSession.notifyFirstIngredientPlaced();
+          syncTutorialAfterIngredientAdded(canAdd.resolved ?? pick.ingredient);
         }
       }
       refreshHud();
@@ -414,6 +580,12 @@ function init() {
     gameAudio,
     debrisSystem,
     pickInterceptor,
+    canStartAim: () => !isTutorialActive() || tutorialStep === 'throw_drag',
+    tableAabbs,
+    tableGroups,
+    onAimStart: () => {
+      if (tutorialStep === 'throw_drag') endTutorial();
+    },
     onSettled: refreshHud,
   });
 
@@ -422,6 +594,8 @@ function init() {
     gameOverOverlayShown = true;
     gameAudio.stopSizzle();
     gameAudio.playTimeUp();
+    gameAudio.playBell();
+    gameAudio.dimMusic();
     if (gameOverCoinsEl) {
       gameOverCoinsEl.textContent = `${gameSession.totalCoins} coins · ${gameSession.customersServed} served`;
     }
@@ -435,8 +609,12 @@ function init() {
   }
 
   function resetFullGame() {
+    if (tutorialRoundStarted) {
+      tutorialRoundStarted = false;
+      endTutorial();
+    }
     gameSession.resetForNewGame();
-    prevCoins = 0;
+    prevCoins = gameSession.totalCoins;
     prevCustomers = 0;
     gameOverOverlayShown = false;
     lastTickTockTime = 0;
@@ -458,13 +636,14 @@ function init() {
     customerManager.resetGame();
     meatGrill.reset();
     gameAudio.stopSizzle();
+    gameAudio.restoreMusicVolume();
     gameAudio.restartMusic();
     worldPickables.registerRaycastTargets(meatGrill.raycastTargets);
-    worldPickables.setShopOpened(false);
+    worldPickables.setShopOpened(true);
     worldPickables.resetTransientState();
     hudInfoModal?.classList.remove('hud-info-modal--visible');
     hudInfoModal?.setAttribute('aria-hidden', 'true');
-    refreshHud();
+    startGameplay();
   }
 
   playAgainBtn?.addEventListener('click', () => {
@@ -532,6 +711,7 @@ function init() {
           gameAudio.playTap();
           stackView.rebuildFromStack(burger.getStack(), { animateLast: true });
           if (burger.getStack().length === 1) gameSession.notifyFirstIngredientPlaced();
+          syncTutorialAfterIngredientAdded(z.ingredient);
         }
         ingredientZips.splice(i, 1);
         refreshHud();
@@ -539,6 +719,7 @@ function init() {
     }
 
     debrisSystem.update(dt);
+    updateTutorialGuide();
     renderer.render(scene, camera);
   }
 

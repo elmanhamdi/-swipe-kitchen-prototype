@@ -23,6 +23,13 @@ export const GEO = {
   seedSphere: 6,
   plateRim: 28,
   plateInner: 22,
+  charArm: 8,
+  charLeg: 8,
+  charHand: 8,
+  charEye: 8,
+  charNose: 6,
+  charHairCone: 8,
+  charHairSphere: 8,
 };
 
 export function configureForDevice() {
@@ -50,6 +57,13 @@ export function configureForDevice() {
     GEO.seedSphere = 6;
     GEO.plateRim = 20;
     GEO.plateInner = 16;
+    GEO.charArm = 6;
+    GEO.charLeg = 6;
+    GEO.charHand = 6;
+    GEO.charEye = 6;
+    GEO.charNose = 5;
+    GEO.charHairCone = 6;
+    GEO.charHairSphere = 6;
   }
 }
 

@@ -39,10 +39,12 @@ export class CustomerManager {
   /**
    * @param {import('three').Scene} scene
    * @param {{ setOpen: (t: number) => void } | null} [backDoor]
+   * @param {import('./audioSystem.js').GameAudio | null} [gameAudio]
    */
-  constructor(scene, backDoor = null) {
+  constructor(scene, backDoor = null, gameAudio = null) {
     this.scene = scene;
     this.backDoor = backDoor;
+    this._gameAudio = gameAudio;
     this.group = new THREE.Group();
     this.group.name = 'Customers';
     scene.add(this.group);
@@ -65,6 +67,8 @@ export class CustomerManager {
     /** When false, no walk-ins or seated updates. */
     this._gameplayActive = false;
     this._gameplayElapsed = 0;
+    /** @type {string[] | null} */
+    this._forcedNextOrder = null;
   }
 
   /** Call when player taps Open — starts spawning / walk-ins. */
@@ -104,13 +108,22 @@ export class CustomerManager {
     const customer = new Customer({
       slotIndex: slot,
       position: { x: SLOT_X[slot], z: SLOT_Z },
-      order: generateCustomerOrder(),
+      order: this._forcedNextOrder ?? generateCustomerOrder(),
     });
+    this._forcedNextOrder = null;
     const view = new CustomerView(customer);
     view.syncFromCustomer();
     view.root.position.set(0, 0, DOOR_START_Z);
     this.group.add(view.root);
     this._walkQueue.push({ customer, view, slotIndex: slot });
+  }
+
+  /**
+   * Force the very next spawned customer to use a specific order.
+   * @param {string[]} order
+   */
+  setNextCustomerOrder(order) {
+    this._forcedNextOrder = Array.isArray(order) ? [...order] : null;
   }
 
   fillToMax() {
@@ -170,6 +183,9 @@ export class CustomerManager {
       e.view.updateHitFlash(dt);
       e.view.syncFromCustomer();
       e.view.updateIdle(dt);
+
+      const voice = e.view.consumeMumble();
+      if (voice && this._gameAudio) this._gameAudio.playMumble(voice);
     }
   }
 
@@ -189,6 +205,7 @@ export class CustomerManager {
         const startX = view.root.position.x;
         const startZ = view.root.position.z;
         view.exitCelebrateMode();
+        view.setFacingTarget(Math.PI);
         this.entries.splice(i, 1);
         this._exitQueue.push({ customer, view, slotIndex, startX, startZ });
       }
@@ -247,9 +264,12 @@ export class CustomerManager {
       w.view.root.position.x = THREE.MathUtils.lerp(0, sx, u);
       w.view.root.position.z = THREE.MathUtils.lerp(DOOR_START_Z, SLOT_Z, u);
       w.view.root.position.y = 0;
+      w.view.updateWalkAnim(dt, true);
+      w.view.updateFacing(dt);
       if (u >= 1) {
         w.view.root.position.x = sx;
         w.view.root.position.z = SLOT_Z;
+        w.view.updateWalkAnim(0, false);
         w.phase = 'door_close';
         w.t = 0;
       }
@@ -290,8 +310,11 @@ export class CustomerManager {
       w.view.root.position.x = THREE.MathUtils.lerp(w.startX, 0, u);
       w.view.root.position.z = THREE.MathUtils.lerp(w.startZ, DOOR_START_Z, u);
       w.view.root.position.y = 0;
+      w.view.updateWalkAnim(dt, true);
+      w.view.updateFacing(dt);
       if (u >= 1) {
         w.view.root.position.set(0, 0, DOOR_START_Z);
+        w.view.updateWalkAnim(0, false);
         w.phase = 'door_close';
         w.t = 0;
       }
@@ -368,5 +391,6 @@ export class CustomerManager {
     this.backDoor?.setOpen(0);
     this._gameplayActive = false;
     this._gameplayElapsed = 0;
+    this._forcedNextOrder = null;
   }
 }

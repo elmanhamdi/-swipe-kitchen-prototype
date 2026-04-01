@@ -22,18 +22,18 @@ const STATE = /** @type {const} */ ({
 });
 
 const COOKING_COLOR = 0x865332;
-const COOKED_COLOR = 0x563221;
+const COOKED_COLOR = 0x6b4028;
 
 const BAR_W = 0.42;
 const BAR_H = 0.06;
 const BAR_D = 0.035;
 
-const RAW_SIDE_COLOR = 0x6b4423;
-const RAW_FACE_TINT = 0xffffff;
+const RAW_SIDE_COLOR = 0x8b2d1a;
+const RAW_FACE_TINT = 0xffc0b0;
 const MID_SIDE_COLOR = COOKING_COLOR;
 const MID_FACE_TINT = 0xd1a17a;
 const COOKED_SIDE_COLOR = COOKED_COLOR;
-const COOKED_FACE_TINT = 0x96684c;
+const COOKED_FACE_TINT = 0xb08060;
 
 function lerpHex(a, b, t) {
   const c0 = new THREE.Color(a);
@@ -387,8 +387,8 @@ export class MeatGrill {
 
     const grillW = 1.7;
     const grillD = 1.3;
-    const grillH = 0.06;
-    const grillY = plateY - 0.1;
+    const grillH = 0.2;
+    const grillY = plateY - 0.5;
     const grillZ = plateZ - 1.6;
 
     const grillMat = new THREE.MeshStandardMaterial({
@@ -481,6 +481,28 @@ export class MeatGrill {
     return this._slots.some(s =>
       s.state === STATE.COOKING_A || s.state === STATE.COOKING_B
     );
+  }
+
+  getPrimarySlotState() {
+    return this._slots[0]?.state ?? STATE.IDLE;
+  }
+
+  /**
+   * @param {THREE.Vector3} [out]
+   */
+  getPrimarySlotWorldPosition(out = new THREE.Vector3()) {
+    this._slots[0]?._pivot.getWorldPosition(out);
+    out.y += 0.12;
+    return out;
+  }
+
+  /**
+   * @param {THREE.Vector3} [out]
+   */
+  getServePlateWorldPosition(out = new THREE.Vector3()) {
+    this._serveMeshPivot.getWorldPosition(out);
+    out.y += 0.12;
+    return out;
   }
 
   startFromPile() {

@@ -173,14 +173,13 @@ export class GameSession {
     return !this.gameOver && this.shopIsOpen && !this.hudInfoOpen;
   }
 
-  /** Full reset for Play Again (timer, coins, combo, timing flags). */
+  /** Full reset for Play Again (timer, combo, timing flags; keeps total coins). */
   resetForNewGame() {
     this.timeLeft = START_TIME_SECONDS;
     this.gameOver = false;
     this.shopIsOpen = false;
     this.hudInfoOpen = false;
     this.combo = 1;
-    this.totalCoins = 0;
     this.customersServed = 0;
     this._burgerBuildStartMs = null;
     this._throwAirStartMs = null;
