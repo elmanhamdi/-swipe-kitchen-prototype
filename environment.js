@@ -247,14 +247,14 @@ function standardMat(opts) {
   });
 }
 
-function brickWallMat() {
+function brickWallMat(brickHex = 0xb06a55) {
   return new THREE.MeshStandardMaterial({
     color: 0xffffff,
     roughness: 0.88,
     metalness: 0.02,
     emissive: 0x2a1810,
     emissiveIntensity: 0.12,
-    map: createCartoonBrickTexture(0xb06a55),
+    map: createCartoonBrickTexture(brickHex),
   });
 }
 
@@ -433,12 +433,11 @@ function buildPendantDomeLight(x, z) {
 
 /* ── Entrance wall decorations (brick pillars, arch, paintings) ────── */
 
-function buildEntranceDecor(group) {
+function buildEntranceDecor(group, brickMat) {
   const backZ = ROOM.zBack;
   const doorLeft = -1.12;
   const doorRight = 1.12;
   const woodMat = standardMat({ color: 0x6a4e36, roughness: 0.5, metalness: 0.1 });
-  const brickMat = brickWallMat();
 
   const pillarW = 0.30;
   const pillarH = WIN_Y1 + 0.3;
@@ -549,9 +548,49 @@ function buildEntranceDecor(group) {
 
   backPicSpecs.forEach(({ x, y, w, h }) => {
     const pic = buildWallPicture(w, h);
-    pic.position.set(x, y, backZ + 0.06);
+    pic.position.set(x, y, backZ + 0.14);
     group.add(pic);
   });
+
+  const xl = xLeftAtZ(backZ);
+  const xr = xRightAtZ(backZ);
+  const wallH = ROOM.wallHeight;
+  const wallD = 0.08;
+  const wallZ = backZ + wallD / 2 + 0.01;
+
+  const leftPanelW = (doorLeft - pillarW * 0.5 - 0.04) - xl;
+  if (leftPanelW > 0.1) {
+    const lp = new THREE.Mesh(
+      new THREE.BoxGeometry(leftPanelW, wallH, wallD),
+      brickMat,
+    );
+    lp.position.set(xl + leftPanelW / 2, wallH / 2, wallZ);
+    lp.receiveShadow = true;
+    group.add(lp);
+  }
+
+  const rightPanelW = xr - (doorRight + pillarW * 0.5 + 0.04);
+  if (rightPanelW > 0.1) {
+    const rp = new THREE.Mesh(
+      new THREE.BoxGeometry(rightPanelW, wallH, wallD),
+      brickMat,
+    );
+    rp.position.set(xr - rightPanelW / 2, wallH / 2, wallZ);
+    rp.receiveShadow = true;
+    group.add(rp);
+  }
+
+  const lintelW = doorRight - doorLeft + pillarW + 0.16;
+  const lintelH = wallH - (WIN_Y1 + 0.3);
+  if (lintelH > 0.05) {
+    const lt = new THREE.Mesh(
+      new THREE.BoxGeometry(lintelW, lintelH, wallD),
+      brickMat,
+    );
+    lt.position.set(0, WIN_Y1 + 0.3 + lintelH / 2, wallZ);
+    lt.receiveShadow = true;
+    group.add(lt);
+  }
 
   const entranceLight = new THREE.PointLight(0xffd090, 1.0, 8, 2);
   entranceLight.position.set(0, 2.8, backZ + 0.5);
@@ -628,6 +667,9 @@ function buildOvalTableSet(x, z, rotY = 0) {
 
   g.position.set(x, 0, z);
   g.rotation.y = rotY;
+  g.userData.tableMat = tableMat;
+  g.userData.chairMat = chairWood;
+  g.userData.cushionMat = cushionMat;
   return g;
 }
 
@@ -678,9 +720,133 @@ function buildWallPicture(w, h) {
   return g;
 }
 
+/* ── Accessory builders ─────────────────────────────────────────────── */
+
+function buildAccWelcomeMat() {
+  const g = new THREE.Group();
+  g.name = 'AccWelcomeMat';
+  const mat = standardMat({ color: 0x6a5040, roughness: 0.92, metalness: 0 });
+  const base = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.02, 0.7), mat);
+  base.receiveShadow = true;
+  g.add(base);
+  const stripe = new THREE.Mesh(
+    new THREE.BoxGeometry(1.4, 0.025, 0.5),
+    standardMat({ color: 0x8a6a3a, roughness: 0.9, metalness: 0, emissive: 0x1a0e04, emissiveIntensity: 0.05 }),
+  );
+  g.add(stripe);
+  g.position.set(0, 0.01, ROOM.zBack + 0.55);
+  return g;
+}
+
+function buildAccRedCarpet() {
+  const g = new THREE.Group();
+  g.name = 'AccRedCarpet';
+  const len = Math.abs(ZONES.counterToCustomers - ROOM.zBack) - 0.5;
+  const carpetMat = standardMat({ color: 0x8b1a1a, roughness: 0.88, metalness: 0, emissive: 0x2a0808, emissiveIntensity: 0.06 });
+  const carpet = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.015, len), carpetMat);
+  carpet.receiveShadow = true;
+  const midZ = (ZONES.counterToCustomers + ROOM.zBack) / 2 + 0.25;
+  carpet.position.set(0, 0.008, midZ);
+  g.add(carpet);
+  const fringeMat = standardMat({ color: 0xc8a030, roughness: 0.7, metalness: 0.1 });
+  [-1, 1].forEach(side => {
+    const fringe = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.018, 0.06), fringeMat);
+    fringe.position.set(0, 0.009, midZ + side * (len / 2 + 0.03));
+    g.add(fringe);
+  });
+  return g;
+}
+
+function buildAccWallClock() {
+  const g = new THREE.Group();
+  g.name = 'AccWallClock';
+  const backZ = ROOM.zBack;
+  const face = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.28, 0.28, 0.04, 24),
+    standardMat({ color: 0xf0e8d8, roughness: 0.5, metalness: 0.05 }),
+  );
+  face.rotation.x = Math.PI / 2;
+  g.add(face);
+  const rim = new THREE.Mesh(
+    new THREE.TorusGeometry(0.28, 0.025, 8, 24),
+    standardMat({ color: 0x3a2a1c, roughness: 0.4, metalness: 0.2 }),
+  );
+  g.add(rim);
+  const handMat = standardMat({ color: 0x1a1a1a, roughness: 0.5, metalness: 0.3 });
+  const minute = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.2, 0.01), handMat);
+  minute.position.set(0, 0.05, 0.03);
+  g.add(minute);
+  const hour = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.14, 0.01), handMat);
+  hour.position.set(0.03, 0.02, 0.035);
+  hour.rotation.z = -0.8;
+  g.add(hour);
+  g.position.set(2.5, 2.6, backZ + 0.2);
+  return g;
+}
+
+function buildAccHangingPlants() {
+  const g = new THREE.Group();
+  g.name = 'AccHangingPlants';
+  const potMat = standardMat({ color: 0x8a5a3a, roughness: 0.8, metalness: 0.05 });
+  const leafMat = standardMat({ color: 0x4a8a3a, roughness: 0.7, metalness: 0, emissive: 0x0a1a06, emissiveIntensity: 0.08 });
+  const positions = [
+    { x: -2.0, z: -1.5 }, { x: 2.0, z: -1.5 },
+    { x: -3.5, z: -3.5 }, { x: 3.5, z: -3.5 },
+  ];
+  positions.forEach(({ x, z }) => {
+    const plant = new THREE.Group();
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.14, 8), potMat);
+    plant.add(pot);
+    const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.5, 4), potMat);
+    rope.position.y = 0.32;
+    plant.add(rope);
+    for (let i = 0; i < 5; i++) {
+      const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 4), leafMat);
+      const a = (i / 5) * Math.PI * 2;
+      leaf.position.set(Math.cos(a) * 0.1, -0.06 - i * 0.03, Math.sin(a) * 0.1);
+      leaf.scale.set(1, 0.6, 1);
+      plant.add(leaf);
+    }
+    plant.position.set(x, 3.2, z);
+    g.add(plant);
+  });
+  return g;
+}
+
+function buildAccFlowerVases(tablePositions) {
+  const g = new THREE.Group();
+  g.name = 'AccFlowerVases';
+  const vaseMat = standardMat({ color: 0xc8b898, roughness: 0.4, metalness: 0.1 });
+  const flowerColors = [0xe05050, 0xe0c040, 0xd070a0, 0x50a0e0];
+  tablePositions.forEach(({ x, z }, ti) => {
+    const vase = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.08, 0.24, 8), vaseMat);
+    body.position.y = 0.12;
+    vase.add(body);
+    for (let i = 0; i < 3; i++) {
+      const fc = flowerColors[(ti * 3 + i) % flowerColors.length];
+      const petal = new THREE.Mesh(
+        new THREE.SphereGeometry(0.07, 6, 4),
+        standardMat({ color: fc, roughness: 0.6, metalness: 0, emissive: fc, emissiveIntensity: 0.08 }),
+      );
+      const a = (i / 3) * Math.PI * 2;
+      petal.position.set(Math.cos(a) * 0.06, 0.28 + i * 0.04, Math.sin(a) * 0.06);
+      vase.add(petal);
+    }
+    const stem = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.012, 0.012, 0.16, 4),
+      standardMat({ color: 0x3a7a2a, roughness: 0.7, metalness: 0 }),
+    );
+    stem.position.y = 0.2;
+    vase.add(stem);
+    vase.position.set(x, 1.0, z);
+    g.add(vase);
+  });
+  return g;
+}
+
 /**
  * Trapezoidal room: merged floor, windowed walls, counter, back door.
- * @returns {{ group: THREE.Group, backDoor: BackDoor, tableAabbs: Array<{min:THREE.Vector3,max:THREE.Vector3}> }}
  */
 export function buildRestaurantRoom() {
   const group = new THREE.Group();
@@ -917,9 +1083,25 @@ export function buildRestaurantRoom() {
   });
 
   /* --- Entrance wall decorations --- */
-  buildEntranceDecor(group);
+  buildEntranceDecor(group, wallMat);
 
-  return { group, backDoor, tableAabbs, tableGroups };
+  /* --- Accessory slots (hidden by default) --- */
+  const _accessorySlots = {};
+  const accBuilders = {
+    acc_mat: () => buildAccWelcomeMat(),
+    acc_carpet: () => buildAccRedCarpet(),
+    acc_clock: () => buildAccWallClock(),
+    acc_plants: () => buildAccHangingPlants(),
+    acc_vases: () => buildAccFlowerVases(tablePositions),
+  };
+  for (const [id, builder] of Object.entries(accBuilders)) {
+    const g = builder();
+    g.visible = false;
+    group.add(g);
+    _accessorySlots[id] = g;
+  }
+
+  return { group, backDoor, tableAabbs, tableGroups, _wallMat: wallMat, _floorMats: floorMats, _tableGroups: tableGroups, _accessorySlots };
 }
 
 /**
@@ -1000,4 +1182,43 @@ export function createRestaurantLights(scene) {
   scene.add(ceilingAmbient);
 
   return { hemi, key, fill };
+}
+
+/**
+ * Swap wall / floor / table materials at runtime using shop catalog values.
+ * @param {{ _wallMat: THREE.MeshStandardMaterial, _floorMats: THREE.MeshStandardMaterial[], _tableGroups: THREE.Group[] }} roomRefs
+ * @param {{ walls: { brickHex: number }, floor: { tileHexes: number[] }, tables: { color: number, chairColor: number, cushionColor: number } }} equipped
+ */
+export function applyShopTheme(roomRefs, equipped) {
+  if (roomRefs._wallMat && equipped.walls) {
+    const oldMap = roomRefs._wallMat.map;
+    roomRefs._wallMat.map = createCartoonBrickTexture(equipped.walls.brickHex);
+    roomRefs._wallMat.needsUpdate = true;
+    if (oldMap) oldMap.dispose();
+  }
+
+  if (roomRefs._floorMats && equipped.floor) {
+    const hexes = equipped.floor.tileHexes;
+    roomRefs._floorMats.forEach((mat, i) => {
+      const oldMap = mat.map;
+      mat.map = createCartoonTileTexture(hexes[i] || hexes[0], i === 0);
+      mat.needsUpdate = true;
+      if (oldMap) oldMap.dispose();
+    });
+  }
+
+  if (roomRefs._tableGroups && equipped.tables) {
+    for (const tg of roomRefs._tableGroups) {
+      if (tg.userData.tableMat) tg.userData.tableMat.color.set(equipped.tables.color);
+      if (tg.userData.chairMat) tg.userData.chairMat.color.set(equipped.tables.chairColor);
+      if (tg.userData.cushionMat) tg.userData.cushionMat.color.set(equipped.tables.cushionColor);
+    }
+  }
+
+  if (roomRefs._accessorySlots && equipped.activeAccessories) {
+    const active = equipped.activeAccessories;
+    for (const [id, grp] of Object.entries(roomRefs._accessorySlots)) {
+      grp.visible = active.includes(id);
+    }
+  }
 }

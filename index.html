@@ -261,6 +261,212 @@
         transform: translateY(2px);
       }
 
+      .game-over-panel__btns {
+        display: flex;
+        gap: clamp(8px, 2vmin, 14px);
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+
+      .game-over-panel__btn--shop {
+        background: linear-gradient(180deg, #74c0fc, #4a90d9);
+        color: #0a1a2e;
+      }
+
+      /* ──── Shop overlay ──────────────────────────────── */
+      #shop-overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 30;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.72);
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transition: opacity 0.25s ease, visibility 0.25s ease;
+      }
+      #shop-overlay.shop-overlay--visible {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+      }
+
+      .shop-panel {
+        position: relative;
+        width: min(96%, 420px);
+        max-height: 88vh;
+        display: flex;
+        flex-direction: column;
+        background: linear-gradient(160deg, rgba(30, 22, 18, 0.97), rgba(48, 34, 26, 0.97));
+        border-radius: clamp(14px, 3vmin, 20px);
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+        transform: scale(0.9);
+        transition: transform 0.25s ease;
+      }
+      #shop-overlay.shop-overlay--visible .shop-panel {
+        transform: scale(1);
+      }
+
+      .shop-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: clamp(10px, 2.5vmin, 16px) clamp(14px, 3vmin, 20px);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .shop-header__title {
+        margin: 0;
+        font: 900 clamp(1.1rem, 4vmin, 1.4rem) system-ui, sans-serif;
+        color: #fff;
+        letter-spacing: 0.08em;
+      }
+      .shop-header__coins {
+        font: 700 clamp(0.85rem, 2.8vmin, 1rem) system-ui, sans-serif;
+        color: #ffd873;
+      }
+      .shop-header__close {
+        background: none;
+        border: none;
+        color: #aaa;
+        font-size: 1.5rem;
+        cursor: pointer;
+        padding: 4px 8px;
+        line-height: 1;
+      }
+      .shop-header__close:hover { color: #fff; }
+
+      .shop-tabs {
+        display: flex;
+        gap: 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .shop-tab {
+        flex: 1;
+        padding: clamp(8px, 2vmin, 12px) 0;
+        font: 700 clamp(0.72rem, 2.2vmin, 0.85rem) system-ui, sans-serif;
+        color: #999;
+        background: none;
+        border: none;
+        border-bottom: 3px solid transparent;
+        cursor: pointer;
+        text-align: center;
+        transition: color 0.15s, border-color 0.15s;
+      }
+      .shop-tab:hover { color: #ccc; }
+      .shop-tab--active {
+        color: #ffd873;
+        border-bottom-color: #ffd873;
+      }
+
+      .shop-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: clamp(8px, 1.8vmin, 12px);
+        padding: clamp(10px, 2.5vmin, 16px);
+        overflow-y: auto;
+        flex: 1;
+        min-height: 0;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255,215,115,0.35) transparent;
+      }
+      .shop-grid::-webkit-scrollbar { width: 6px; }
+      .shop-grid::-webkit-scrollbar-track { background: transparent; }
+      .shop-grid::-webkit-scrollbar-thumb {
+        background: rgba(255,215,115,0.35);
+        border-radius: 3px;
+      }
+      .shop-grid::-webkit-scrollbar-thumb:hover {
+        background: rgba(255,215,115,0.55);
+      }
+
+      .shop-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        padding: clamp(10px, 2vmin, 14px) 8px;
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: clamp(8px, 2vmin, 12px);
+        border: 2px solid transparent;
+        cursor: pointer;
+        transition: border-color 0.15s, background 0.15s;
+      }
+      .shop-card:hover { background: rgba(255, 255, 255, 0.08); }
+      .shop-card--equipped {
+        border-color: #ffd873;
+        background: rgba(255, 216, 115, 0.08);
+      }
+      .shop-card--locked {
+        opacity: 0.55;
+      }
+
+      .shop-card__swatch {
+        width: clamp(52px, 12vmin, 68px);
+        height: clamp(52px, 12vmin, 68px);
+        border-radius: clamp(6px, 1.5vmin, 10px);
+        border: 2px solid rgba(255, 255, 255, 0.12);
+        object-fit: cover;
+        image-rendering: pixelated;
+      }
+
+      .shop-card__name {
+        font: 600 clamp(0.65rem, 2vmin, 0.78rem) system-ui, sans-serif;
+        color: #ddd;
+        text-align: center;
+        line-height: 1.2;
+      }
+      .shop-card__price {
+        font: 700 clamp(0.6rem, 1.8vmin, 0.72rem) system-ui, sans-serif;
+        color: #ffd873;
+      }
+      .shop-card__badge {
+        font: 700 clamp(0.55rem, 1.6vmin, 0.65rem) system-ui, sans-serif;
+        padding: 2px 8px;
+        border-radius: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .shop-card__badge--equipped {
+        background: rgba(255, 216, 115, 0.2);
+        color: #ffd873;
+      }
+      .shop-card__badge--owned {
+        background: rgba(100, 200, 100, 0.15);
+        color: #6cc070;
+      }
+
+      .shop-card__btn {
+        border: none;
+        border-radius: 8px;
+        padding: 5px 14px;
+        font: 700 clamp(0.6rem, 1.8vmin, 0.72rem) system-ui, sans-serif;
+        cursor: pointer;
+        touch-action: manipulation;
+      }
+      .shop-card__btn--buy {
+        background: linear-gradient(180deg, #f0c85c, #d9a62e);
+        color: #1a1408;
+      }
+      .shop-card__btn--buy:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      .shop-card__btn--equip {
+        background: linear-gradient(180deg, #74c0fc, #4a90d9);
+        color: #0a1a2e;
+      }
+      .shop-card__btn--toggle-on {
+        background: linear-gradient(180deg, #69db7c, #40a050);
+        color: #0a2a0e;
+      }
+      .shop-card__btn--toggle-off {
+        background: rgba(255, 255, 255, 0.1);
+        color: #aaa;
+      }
+
       /* ---- Polished top HUD (scales with 9:16 stage) ---- */
       .game-hud {
         position: absolute;
@@ -1152,7 +1358,26 @@
             <div class="game-over-panel">
               <h2 class="game-over-panel__title">TIME UP</h2>
               <p class="game-over-panel__coins" id="game-over-coins">0 coins</p>
-              <button type="button" class="game-over-panel__btn" id="play-again-btn">Play Again</button>
+              <div class="game-over-panel__btns">
+                <button type="button" class="game-over-panel__btn" id="play-again-btn">Play Again</button>
+                <button type="button" class="game-over-panel__btn game-over-panel__btn--shop" id="shop-btn">Shop</button>
+              </div>
+            </div>
+          </div>
+          <div id="shop-overlay" aria-hidden="true">
+            <div class="shop-panel">
+              <div class="shop-header">
+                <h2 class="shop-header__title">SHOP</h2>
+                <span class="shop-header__coins" id="shop-coins">0 coins</span>
+                <button class="shop-header__close" id="shop-close-btn" aria-label="Close shop">&times;</button>
+              </div>
+              <div class="shop-tabs" id="shop-tabs">
+                <button class="shop-tab shop-tab--active" data-cat="walls">Walls</button>
+                <button class="shop-tab" data-cat="floor">Floor</button>
+                <button class="shop-tab" data-cat="tables">Tables</button>
+                <button class="shop-tab" data-cat="accessories">Decor</button>
+              </div>
+              <div class="shop-grid" id="shop-grid"></div>
             </div>
           </div>
           <div class="game-hud" role="region" aria-label="Game status">
@@ -1200,7 +1425,8 @@
               </div>
             </div>
           </div>
-          <button type="button" class="hud-info-btn" id="hud-info-btn" aria-label="How to play">i</button>
+          <!-- info button removed -->
+
           <button type="button" class="hud-sound-btn" id="hud-sound-btn" aria-label="Toggle sound">
             <svg class="hud-sound-btn__icon" id="sound-icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none"/>

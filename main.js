@@ -11,7 +11,12 @@ import { GameSession, START_TIME_SECONDS } from './gameCore.js';
 import { FloatingBonusLayer } from './floatingBonusText.js';
 import { ScreenShake, CoinFlyoutLayer, AmbientCameraDrift } from './juiceSystems.js';
 import { GameAudio } from './audioSystem.js';
-import { buildRestaurantRoom, applyAtmosphere, createRestaurantLights } from './environment.js';
+import { buildRestaurantRoom, applyAtmosphere, createRestaurantLights, applyShopTheme } from './environment.js';
+import {
+  SHOP_CATALOG, loadShopState, saveShopState, getShopState, syncCoins,
+  isOwned, isEquipped, canAfford, buyItem, equipItem, getEquippedItem,
+  toggleAccessory, isAccessoryActive, getActiveAccessories,
+} from './shopState.js';
 import { configureForDevice, getRenderProfile } from './renderQuality.js';
 import { BurgerDebrisSystem } from './burgerDebris.js';
 import { WorldPickables } from './worldPickables.js';
@@ -66,8 +71,16 @@ function init() {
 
   createRestaurantLights(scene);
 
-  const { group: roomGroup, backDoor, tableAabbs, tableGroups, pendantGroups } = buildRestaurantRoom();
+  const roomResult = buildRestaurantRoom();
+  const { group: roomGroup, backDoor, tableAabbs, tableGroups, pendantGroups } = roomResult;
   scene.add(roomGroup);
+
+  applyShopTheme(roomResult, {
+    walls: getEquippedItem('walls'),
+    floor: getEquippedItem('floor'),
+    tables: getEquippedItem('tables'),
+    activeAccessories: getActiveAccessories(),
+  });
 
   const customerManager = new CustomerManager(scene, backDoor, gameAudio);
 
@@ -118,6 +131,8 @@ function init() {
   let startButtonPressTimer = 0;
 
   const gameSession = new GameSession();
+  const shopData = loadShopState();
+  gameSession.totalCoins = shopData.coins;
   let prevCoins = gameSession.totalCoins;
   let prevCustomers = gameSession.customersServed;
   let gameOverOverlayShown = false;
@@ -596,6 +611,7 @@ function init() {
   function showGameOverUI() {
     if (gameOverOverlayShown || !gameOverOverlay) return;
     gameOverOverlayShown = true;
+    syncCoins(gameSession.totalCoins);
     gameAudio.stopSizzle();
     gameAudio.playTimeUp();
     gameAudio.playBell();
@@ -627,6 +643,7 @@ function init() {
       gameOverOverlay.setAttribute('aria-hidden', 'true');
     }
     gameOverSplash?.classList.remove('game-over-splash--animate');
+    closeShopUI();
     burger.reset();
     stackView.clearFeedbacks();
     stackView.rebuildFromStack(burger.getStack(), { animateLast: false });
@@ -652,6 +669,265 @@ function init() {
 
   playAgainBtn?.addEventListener('click', () => {
     resetFullGame();
+  });
+
+  /* ── Shop UI ─────────────────────────────────────────────────────── */
+  const shopOverlay = document.getElementById('shop-overlay');
+  const shopCoinsEl = document.getElementById('shop-coins');
+  const shopGrid = document.getElementById('shop-grid');
+  const shopTabs = document.getElementById('shop-tabs');
+  const shopCloseBtn = document.getElementById('shop-close-btn');
+  const shopBtn = document.getElementById('shop-btn');
+  let shopActiveCategory = 'walls';
+
+  function hexToCSS(hex) {
+    return '#' + hex.toString(16).padStart(6, '0');
+  }
+
+  function hexToRGB(hex) {
+    return [(hex >> 16) & 0xff, (hex >> 8) & 0xff, hex & 0xff];
+  }
+
+  function drawBrickSwatch(canvas, brickHex) {
+    const w = canvas.width, h = canvas.height;
+    const ctx = canvas.getContext('2d');
+    const [r, g, b] = hexToRGB(brickHex);
+    const base = `rgb(${r},${g},${b})`;
+    const mortar = `rgb(${Math.min(255, r + 60)},${Math.min(255, g + 55)},${Math.min(255, b + 45)})`;
+    ctx.fillStyle = mortar;
+    ctx.fillRect(0, 0, w, h);
+    const bw = 18, bh = 9, gap = 2;
+    for (let row = 0; row < Math.ceil(h / (bh + gap)); row++) {
+      const off = (row % 2) * (bw / 2 + gap / 2);
+      for (let col = -1; col < Math.ceil(w / (bw + gap)) + 1; col++) {
+        const x = col * (bw + gap) + off;
+        const v = ((row * 7 + col * 3) % 5 - 2) * 8;
+        ctx.fillStyle = `rgb(${Math.max(0, Math.min(255, r + v))},${Math.max(0, Math.min(255, g + v))},${Math.max(0, Math.min(255, b + v))})`;
+        const rx = Math.max(0, x), ry = row * (bh + gap);
+        const rw = Math.min(bw, w - rx), rh = bh;
+        if (rw > 0 && ry + rh <= h + bh) {
+          ctx.beginPath();
+          ctx.roundRect(rx, ry, rw, rh, 1.5);
+          ctx.fill();
+        }
+      }
+    }
+  }
+
+  function drawTileSwatch(canvas, tileHexes) {
+    const w = canvas.width, h = canvas.height;
+    const ctx = canvas.getContext('2d');
+    const cols = 3, rows = 3;
+    const tw = w / cols, th = h / rows;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const hex = tileHexes[(r + c) % tileHexes.length];
+        const [rr, gg, bb] = hexToRGB(hex);
+        const v = ((r * 5 + c * 3) % 3 - 1) * 6;
+        ctx.fillStyle = `rgb(${Math.max(0, Math.min(255, rr + v))},${Math.max(0, Math.min(255, gg + v))},${Math.max(0, Math.min(255, bb + v))})`;
+        ctx.fillRect(c * tw + 0.5, r * th + 0.5, tw - 1, th - 1);
+        ctx.strokeStyle = `rgba(0,0,0,0.15)`;
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(c * tw + 0.5, r * th + 0.5, tw - 1, th - 1);
+      }
+    }
+  }
+
+  function drawTableSwatch(canvas, item) {
+    const w = canvas.width, h = canvas.height;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#2a2220';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = hexToCSS(item.color);
+    ctx.beginPath();
+    ctx.ellipse(w / 2, h * 0.38, w * 0.38, h * 0.16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = hexToCSS(item.chairColor);
+    ctx.fillRect(w * 0.08, h * 0.6, w * 0.2, h * 0.12);
+    ctx.fillRect(w * 0.72, h * 0.6, w * 0.2, h * 0.12);
+    ctx.fillStyle = hexToCSS(item.cushionColor);
+    ctx.beginPath();
+    ctx.arc(w * 0.18, h * 0.66, w * 0.09, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(w * 0.82, h * 0.66, w * 0.09, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = hexToCSS(item.chairColor);
+    ctx.fillRect(w * 0.42, h * 0.52, w * 0.04, h * 0.38);
+    ctx.fillRect(w * 0.54, h * 0.52, w * 0.04, h * 0.38);
+  }
+
+  const _swatchCache = new Map();
+
+  const ACC_ICONS = {
+    acc_mat:       { bg: '#6a5040', shapes: [{ t: 'rect', x: 15, y: 28, w: 50, h: 24, c: '#8a6a3a' }] },
+    acc_carpet:    { bg: '#3a1a1a', shapes: [{ t: 'rect', x: 20, y: 10, w: 40, h: 60, c: '#8b1a1a' }, { t: 'rect', x: 22, y: 8, w: 36, h: 4, c: '#c8a030' }, { t: 'rect', x: 22, y: 68, w: 36, h: 4, c: '#c8a030' }] },
+    acc_clock:     { bg: '#2a2220', shapes: [{ t: 'circle', x: 40, y: 40, r: 26, c: '#f0e8d8' }, { t: 'circle', x: 40, y: 40, r: 28, c: '#3a2a1c', fill: false, lw: 3 }, { t: 'line', x1: 40, y1: 40, x2: 40, y2: 20, c: '#1a1a1a', lw: 2 }, { t: 'line', x1: 40, y1: 40, x2: 55, y2: 35, c: '#1a1a1a', lw: 2 }] },
+    acc_plants:    { bg: '#2a3a2a', shapes: [{ t: 'circle', x: 28, y: 50, r: 10, c: '#4a8a3a' }, { t: 'circle', x: 52, y: 50, r: 10, c: '#4a8a3a' }, { t: 'circle', x: 40, y: 38, r: 10, c: '#5a9a4a' }, { t: 'rect', x: 25, y: 55, w: 12, h: 14, c: '#8a5a3a' }, { t: 'rect', x: 43, y: 55, w: 12, h: 14, c: '#8a5a3a' }] },
+    acc_vases:     { bg: '#2a2220', shapes: [{ t: 'rect', x: 33, y: 40, w: 14, h: 22, c: '#c8b898' }, { t: 'circle', x: 36, y: 34, r: 6, c: '#e05050' }, { t: 'circle', x: 44, y: 32, r: 6, c: '#e0c040' }, { t: 'circle', x: 40, y: 38, r: 5, c: '#d070a0' }] },
+  };
+
+  function drawAccSwatch(canvas, item) {
+    const w = canvas.width, h = canvas.height;
+    const ctx = canvas.getContext('2d');
+    const spec = ACC_ICONS[item.id];
+    if (!spec) { ctx.fillStyle = '#333'; ctx.fillRect(0, 0, w, h); return; }
+    ctx.fillStyle = spec.bg;
+    ctx.fillRect(0, 0, w, h);
+    for (const s of spec.shapes) {
+      if (s.t === 'rect') {
+        ctx.fillStyle = s.c;
+        ctx.fillRect(s.x, s.y, s.w, s.h);
+      } else if (s.t === 'circle') {
+        if (s.fill === false) {
+          ctx.strokeStyle = s.c;
+          ctx.lineWidth = s.lw || 2;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = s.c;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (s.t === 'line') {
+        ctx.strokeStyle = s.c;
+        ctx.lineWidth = s.lw || 2;
+        ctx.beginPath();
+        ctx.moveTo(s.x1, s.y1);
+        ctx.lineTo(s.x2, s.y2);
+        ctx.stroke();
+      } else if (s.t === 'arc') {
+        ctx.strokeStyle = s.c;
+        ctx.lineWidth = s.lw || 3;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, s.sa, s.ea);
+        ctx.stroke();
+      }
+    }
+  }
+
+  function getSwatchDataURL(cat, item) {
+    if (_swatchCache.has(item.id)) return _swatchCache.get(item.id);
+    const canvas = document.createElement('canvas');
+    canvas.width = 80;
+    canvas.height = 80;
+    if (cat === 'walls') drawBrickSwatch(canvas, item.brickHex);
+    else if (cat === 'floor') drawTileSwatch(canvas, item.tileHexes);
+    else if (cat === 'tables') drawTableSwatch(canvas, item);
+    else if (cat === 'accessories') drawAccSwatch(canvas, item);
+    const url = canvas.toDataURL();
+    _swatchCache.set(item.id, url);
+    return url;
+  }
+
+  function renderShopGrid(cat) {
+    if (!shopGrid) return;
+    const items = SHOP_CATALOG[cat];
+    const state = getShopState();
+    const isAcc = cat === 'accessories';
+    shopGrid.innerHTML = items.map(item => {
+      const owned = isOwned(item.id);
+      const affordable = canAfford(item.price);
+      let badge = '';
+      let btn = '';
+      let cardExtra = '';
+      if (isAcc) {
+        const active = isAccessoryActive(item.id);
+        if (owned) {
+          const cls = active ? 'shop-card__btn--toggle-on' : 'shop-card__btn--toggle-off';
+          btn = `<button class="shop-card__btn ${cls}" data-action="toggle" data-id="${item.id}">${active ? 'ON' : 'OFF'}</button>`;
+          if (active) cardExtra = ' shop-card--equipped';
+        } else {
+          badge = `<span class="shop-card__price">${item.price} coins</span>`;
+          btn = `<button class="shop-card__btn shop-card__btn--buy" data-action="buy" data-id="${item.id}" ${!affordable ? 'disabled' : ''}>${affordable ? 'Buy' : 'Need ' + item.price}</button>`;
+        }
+      } else {
+        const equipped = isEquipped(cat, item.id);
+        if (equipped) {
+          badge = '<span class="shop-card__badge shop-card__badge--equipped">Equipped</span>';
+          cardExtra = ' shop-card--equipped';
+        } else if (owned) {
+          badge = '<span class="shop-card__badge shop-card__badge--owned">Owned</span>';
+          btn = `<button class="shop-card__btn shop-card__btn--equip" data-action="equip" data-id="${item.id}" data-cat="${cat}">Equip</button>`;
+        } else {
+          badge = `<span class="shop-card__price">${item.price} coins</span>`;
+          btn = `<button class="shop-card__btn shop-card__btn--buy" data-action="buy" data-id="${item.id}" ${!affordable ? 'disabled' : ''}>${affordable ? 'Buy' : 'Need ' + item.price}</button>`;
+        }
+      }
+      const cardClass = `shop-card${cardExtra}${!owned && !affordable ? ' shop-card--locked' : ''}`;
+      const swatchURL = getSwatchDataURL(cat, item);
+      return `<div class="${cardClass}">
+        <img class="shop-card__swatch" src="${swatchURL}" alt="${item.name}" draggable="false"/>
+        <div class="shop-card__name">${item.name}</div>
+        ${badge}${btn}
+      </div>`;
+    }).join('');
+
+    if (shopCoinsEl) shopCoinsEl.textContent = `${state.coins} coins`;
+  }
+
+  function openShopUI() {
+    syncCoins(gameSession.totalCoins);
+    renderShopGrid(shopActiveCategory);
+    shopOverlay?.classList.add('shop-overlay--visible');
+    shopOverlay?.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeShopUI() {
+    shopOverlay?.classList.remove('shop-overlay--visible');
+    shopOverlay?.setAttribute('aria-hidden', 'true');
+  }
+
+  function applyCurrentTheme() {
+    applyShopTheme(roomResult, {
+      walls: getEquippedItem('walls'),
+      floor: getEquippedItem('floor'),
+      tables: getEquippedItem('tables'),
+      activeAccessories: getActiveAccessories(),
+    });
+  }
+
+  shopBtn?.addEventListener('click', openShopUI);
+  shopCloseBtn?.addEventListener('click', closeShopUI);
+
+  shopTabs?.addEventListener('click', (e) => {
+    const tab = e.target.closest('.shop-tab');
+    if (!tab) return;
+    shopActiveCategory = tab.dataset.cat;
+    shopTabs.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('shop-tab--active'));
+    tab.classList.add('shop-tab--active');
+    renderShopGrid(shopActiveCategory);
+  });
+
+  shopGrid?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const id = btn.dataset.id;
+    if (action === 'buy') {
+      const result = buyItem(id);
+      if (result.success) {
+        gameSession.totalCoins = result.newBalance;
+        prevCoins = result.newBalance;
+        applyCurrentTheme();
+        gameAudio.playTap();
+      }
+    } else if (action === 'equip') {
+      const cat = btn.dataset.cat;
+      equipItem(cat, id);
+      applyCurrentTheme();
+      gameAudio.playTap();
+    } else if (action === 'toggle') {
+      toggleAccessory(id);
+      applyCurrentTheme();
+      gameAudio.playTap();
+    }
+    renderShopGrid(shopActiveCategory);
   });
 
   function resize() {
