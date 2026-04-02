@@ -10,13 +10,13 @@ const LAYER = {
   bun_bottom: { h: 0.11, color: 0xc4a574 },
   bun_top: { h: 0.1, color: 0xb8956a },
   lettuce: { h: 0.045, color: 0x4a9f5c },
-  tomato: { h: 0.035, color: 0xc93c3c },
+  tomato: { h: 0.055, color: 0xc93c3c },
   cheese: { h: 0.028, color: 0xf0c040 },
   meat: { h: 0.09, color: 0x8b2d1a },
   meat_cooked: { h: 0.09, color: 0x6b4028 },
 };
 
-export const STACK_GAP = 0.028;
+export const STACK_GAP = 0.065;
 const ORDER_PREVIEW_GAP = 0.012;
 const INGREDIENT_TEXTURE_PATHS = {
   bun: './assets/textures/ingredients/burger-bun.png',

@@ -25,8 +25,9 @@ export const AUDIO_LEVELS = {
   sizzle: 0.07,
   grillDing: 0.5,
   bell: 0.6,
-  tableCrash: 0.28,
+  tableCrash: 0.72,
   mumble: 0.32,
+  ingredientPlace: 0.45,
 };
 
 const MUSIC_TRACK_URL = './assets/O%20P%20Baron%20-%20Welcome%20to%20Our%20Show.mp3';
@@ -129,18 +130,19 @@ function createTrashBuffer(ctx, durationSec = 0.2) {
   return buffer;
 }
 
-function createTableCrashBuffer(ctx, durationSec = 0.35) {
+function createTableCrashBuffer(ctx, durationSec = 0.5) {
   const sr = ctx.sampleRate;
   const n = Math.floor(sr * durationSec);
   const buffer = ctx.createBuffer(1, n, sr);
   const d = buffer.getChannelData(0);
   for (let i = 0; i < n; i++) {
     const t = i / sr;
-    const env = Math.exp(-t * 8) * (1 - t / durationSec);
-    const thump = Math.sin(2 * Math.PI * 80 * t) * 0.3 * Math.exp(-t * 14);
-    const rattle = (Math.random() * 2 - 1) * 0.18 * Math.exp(-t * 5);
-    const wood = Math.sin(2 * Math.PI * 220 * t) * 0.08 * Math.exp(-t * 18);
-    d[i] = (thump + rattle + wood) * env * 0.4;
+    const env = Math.exp(-t * 5) * (1 - t / durationSec);
+    const thump = Math.sin(2 * Math.PI * 65 * t) * 0.55 * Math.exp(-t * 10);
+    const crack = Math.sin(2 * Math.PI * 350 * t) * 0.2 * Math.exp(-t * 25);
+    const rattle = (Math.random() * 2 - 1) * 0.35 * Math.exp(-t * 4);
+    const wood = Math.sin(2 * Math.PI * 180 * t) * 0.18 * Math.exp(-t * 12);
+    d[i] = (thump + crack + rattle + wood) * env * 0.75;
   }
   return buffer;
 }
@@ -556,6 +558,21 @@ function createMumbleBuffer(ctx, voice) {
   return buffer;
 }
 
+function createIngredientPlaceBuffer(ctx, durationSec = 0.08) {
+  const sr = ctx.sampleRate;
+  const n = Math.max(1, Math.floor(sr * durationSec));
+  const buffer = ctx.createBuffer(1, n, sr);
+  const d = buffer.getChannelData(0);
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const env = Math.exp(-t * 60);
+    const thump = Math.sin(2 * Math.PI * 220 * t) * 0.6;
+    const click = (Math.random() * 2 - 1) * Math.exp(-t * 120) * 0.4;
+    d[i] = Math.max(-1, Math.min(1, (thump + click) * env));
+  }
+  return buffer;
+}
+
 function playOneShot(audio, vol) {
   if (!audio || !audio.buffer) return;
   try {
@@ -624,6 +641,7 @@ export class GameAudio {
       grillDing: createGrillDingBuffer(ctx),
       bell: createBellBuffer(ctx),
       tableCrash: createTableCrashBuffer(ctx),
+      ingredientPlace: createIngredientPlaceBuffer(ctx),
     };
 
     for (let i = 0; i < 6; i++) {
@@ -667,6 +685,9 @@ export class GameAudio {
 
     this._bell = new THREE.Audio(this.listener);
     this._bell.setBuffer(this._buffers.bell);
+
+    this._ingredientPlace = new THREE.Audio(this.listener);
+    this._ingredientPlace.setBuffer(this._buffers.ingredientPlace);
 
     this._music = new THREE.Audio(this.listener);
     this._music.setLoop(true);
@@ -824,6 +845,10 @@ export class GameAudio {
 
   playBell() {
     playOneShot(this._bell, this._sfxVol('bell'));
+  }
+
+  playIngredientPlace() {
+    playOneShot(this._ingredientPlace, this._sfxVol('ingredientPlace'));
   }
 
   dimMusic() {

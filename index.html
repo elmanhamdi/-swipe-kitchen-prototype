@@ -520,6 +520,32 @@
         transform-origin: center center;
       }
 
+      .start-cooking-btn::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 110%;
+        height: 130%;
+        transform: translate(-50%, -50%);
+        border-radius: 32px;
+        background: radial-gradient(ellipse at center, rgba(255, 220, 60, 0.55) 0%, rgba(255, 180, 30, 0.25) 40%, transparent 72%);
+        pointer-events: none;
+        z-index: -1;
+        animation: startCookingGlow 1.6s ease-in-out infinite;
+      }
+
+      @keyframes startCookingGlow {
+        0%, 100% {
+          opacity: 0.35;
+          transform: translate(-50%, -50%) scale(0.92);
+        }
+        50% {
+          opacity: 1;
+          transform: translate(-50%, -50%) scale(1.12);
+        }
+      }
+
       .start-cooking-btn[hidden] {
         display: none;
       }

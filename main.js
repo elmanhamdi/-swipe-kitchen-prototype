@@ -66,7 +66,7 @@ function init() {
 
   createRestaurantLights(scene);
 
-  const { group: roomGroup, backDoor, tableAabbs, tableGroups } = buildRestaurantRoom();
+  const { group: roomGroup, backDoor, tableAabbs, tableGroups, pendantGroups } = buildRestaurantRoom();
   scene.add(roomGroup);
 
   const customerManager = new CustomerManager(scene, backDoor, gameAudio);
@@ -74,17 +74,18 @@ function init() {
   const burger = new Burger();
   const playArea = new THREE.Group();
   playArea.name = 'PlayArea';
-  playArea.position.set(0, 0, 2.42);
+  playArea.position.set(0, 0.5,3.2);
   scene.add(playArea);
 
   const plateY = 1.1;
   const plateZ = 1;
+  const servePlateZ = plateZ + 0.35;
   const plate = createPlate();
-  plate.position.set(0, plateY, plateZ);
+  plate.position.set(0, plateY, servePlateZ);
   playArea.add(plate);
 
   const stackAnchor = new THREE.Group();
-  stackAnchor.position.set(0, plateY + 0.13, plateZ);
+  stackAnchor.position.set(0, plateY + 0.13, servePlateZ);
   playArea.add(stackAnchor);
 
   const stackView = new BurgerStackView(stackAnchor);
@@ -388,7 +389,7 @@ function init() {
     }
     gameSession.openShop();
     customerManager.beginGameplay();
-    worldPickables.setShopOpened(true);
+    worldPickables.setShopOpened(true, () => gameAudio.playIngredientPlace());
     const shopSplash = document.getElementById('shop-open-splash');
     if (shopSplash) {
       shopSplash.classList.remove('shop-open-splash--show');
@@ -520,7 +521,9 @@ function init() {
           refreshHud();
           return true;
         }
-        meatGrill.startFromPile();
+        const sourcePos = pick.origin.clone();
+        sourcePos.y += 0.18;
+        meatGrill.startFromPileAnimated(sourcePos);
         worldPickables.registerRaycastTargets(meatGrill.raycastTargets);
         if (tutorialStep === 'meat_start') tutorialStep = 'meat_flip_wait';
         refreshHud();
@@ -583,6 +586,7 @@ function init() {
     canStartAim: () => !isTutorialActive() || tutorialStep === 'throw_drag',
     tableAabbs,
     tableGroups,
+    pendantGroups,
     onAimStart: () => {
       if (tutorialStep === 'throw_drag') endTutorial();
     },
@@ -639,8 +643,8 @@ function init() {
     gameAudio.restoreMusicVolume();
     gameAudio.restartMusic();
     worldPickables.registerRaycastTargets(meatGrill.raycastTargets);
-    worldPickables.setShopOpened(true);
     worldPickables.resetTransientState();
+    worldPickables.setShopOpened(true, () => gameAudio.playIngredientPlace());
     hudInfoModal?.classList.remove('hud-info-modal--visible');
     hudInfoModal?.setAttribute('aria-hidden', 'true');
     startGameplay();
@@ -687,6 +691,7 @@ function init() {
       worldPickables.update(simDt);
       const grillDinged = meatGrill.update(simDt);
       if (grillDinged) gameAudio.playGrillDing();
+      worldPickables.registerRaycastTargets(meatGrill.raycastTargets);
       if (meatGrill.isAnyCooking) gameAudio.startSizzle();
       else gameAudio.stopSizzle();
       floatingLayer.update(simDt);

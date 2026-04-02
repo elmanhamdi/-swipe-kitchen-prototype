@@ -9,7 +9,7 @@ const _ray = new THREE.Raycaster();
 const _ndc = new THREE.Vector2();
 
 const PILE_SCALE = 0.38 * 3;
-const PILE_LAYER_Y = 0.065 * 3;
+const PILE_LAYER_Y = 0.06 * 3;
 const TRASH_SHAKE_DURATION = 0.34;
 
 function getPileAccentColor(pickKey) {
@@ -111,13 +111,38 @@ export class WorldPickables {
       this.group.add(leg);
     }
 
+    const underPanelW = tableW - 0.5;
+    const underPanelH = 10*legH - 0.06;
+    const underPanelD = tableD - 0.5;
+    const underPanelMat = new THREE.MeshStandardMaterial({
+      color: 0x9e8870,
+      roughness: 0.8,
+      metalness: 0.04,
+    });
+    const underPanel = new THREE.Mesh(
+      new THREE.BoxGeometry(underPanelW, underPanelH, underPanelD),
+      underPanelMat,
+    );
+    underPanel.position.set(0, -1.2, tableZ+0.23);
+    /**underPanel.rotation.x = Math.PI / 6;*/
+    underPanel.castShadow = true;
+    underPanel.receiveShadow = true;
+    underPanel.name = 'UnderTablePanel';
+    this.group.add(underPanel);
+    this._underPanelMesh = underPanel;
+
     const pileY = tableH + tableTopThick / 2 + 0.08;
-    this._addIngredientPile('lettuce', -1.5, 0.6, pileY);
+    this._pileItems = [];
+    this._addIngredientPile('lettuce', -1.5, 0.5, pileY);
     this._addIngredientPile('tomato', -1.7, 1.5, pileY);
 
     this._addIngredientPile('cheese', 1.7, 1.5, pileY);
-    this._addIngredientPile('meat', 1.3, -0.5, pileY);
-    this._addIngredientPile('bun', 1.5, 0.6, pileY);
+    this._addIngredientPile('meat', 1.4, -0.8, pileY);
+    this._addIngredientPile('bun', 1.5, 0.5, pileY);
+
+    this._introAnims = [];
+    this._introPlaying = false;
+    this._onIntroTick = null;
 
     const trashMat = new THREE.MeshStandardMaterial({
       color: 0x4f7d89,
@@ -184,9 +209,32 @@ export class WorldPickables {
     if (idx >= 0) this._meshes.splice(idx, 1);
   }
 
-  /** Hide the 3D Open prop after the shop starts (show again on reset). */
-  setShopOpened(opened) {
-    void opened;
+  /**
+   * @param {boolean} opened
+   * @param {(() => void)|null} [onTick] called each time an item lands
+   */
+  setShopOpened(opened, onTick = null) {
+    if (!opened) return;
+    this._onIntroTick = onTick;
+    this._introAnims = [];
+    const dropDur = 0.35;
+    const layerStagger = 0.14;
+    for (let i = 0; i < this._pileItems.length; i++) {
+      const item = this._pileItems[i];
+      const layerIdx = i % 4;
+      item.mesh.scale.setScalar(0);
+      item.mesh.position.y = item.targetY + 0.6;
+      this._introAnims.push({
+        mesh: item.mesh,
+        targetScale: item.targetScale,
+        targetY: item.targetY,
+        delay: layerIdx * layerStagger,
+        dur: dropDur,
+        t: 0,
+        done: false,
+      });
+    }
+    this._introPlaying = true;
   }
 
   triggerTrashShake() {
@@ -198,6 +246,13 @@ export class WorldPickables {
     if (this._trashLid) {
       this._trashLid.rotation.set(0, 0, 0);
       this._trashLid.position.y = 0.44 * 2 + 0.02;
+    }
+    this._introPlaying = false;
+    this._introAnims = [];
+    for (const item of this._pileItems) {
+      item.mesh.visible = true;
+      item.mesh.scale.setScalar(item.targetScale);
+      item.mesh.position.y = item.targetY;
     }
   }
 
@@ -255,12 +310,15 @@ export class WorldPickables {
     const n = 4;
     for (let i = 0; i < n; i++) {
       const m = createIngredientMesh(visualType);
-      m.scale.setScalar(PILE_SCALE);
-      m.position.y = 0.05 + i * PILE_LAYER_Y;
+      const targetScale = PILE_SCALE;
+      const targetY = 0.05 + i * PILE_LAYER_Y;
+      m.scale.setScalar(targetScale);
+      m.position.y = targetY;
       m.castShadow = true;
       m.receiveShadow = true;
       g.add(m);
       this._meshes.push(m);
+      this._pileItems.push({ mesh: m, targetScale, targetY });
     }
     g.position.set(lx, ly, lz);
     this.group.add(g);
@@ -300,6 +358,8 @@ export class WorldPickables {
   }
 
   update(dt) {
+    this._updateIntroAnim(dt);
+
     if (!this._trashLid) return;
     if (this._trashShakeT <= 0 || dt <= 0) {
       this._trashLid.rotation.x = 0;
@@ -314,5 +374,30 @@ export class WorldPickables {
     this._trashLid.rotation.x = wobble * 0.35;
     this._trashLid.rotation.z = wobble;
     this._trashLid.position.y = 0.44 * 2 + 0.02 + Math.abs(wobble) * 0.02;
+  }
+
+  _updateIntroAnim(dt) {
+    if (!this._introPlaying) return;
+    let allDone = true;
+    let justLanded = false;
+    for (const a of this._introAnims) {
+      if (a.done) continue;
+      if (a.delay > 0) { a.delay -= dt; allDone = false; continue; }
+      a.t += dt;
+      const p = Math.min(a.t / a.dur, 1);
+      const ease = 1 - (1 - p) * (1 - p);
+      a.mesh.scale.setScalar(a.targetScale * ease);
+      a.mesh.position.y = a.targetY + 0.6 * (1 - ease);
+      if (p >= 1) {
+        a.done = true;
+        a.mesh.scale.setScalar(a.targetScale);
+        a.mesh.position.y = a.targetY;
+        justLanded = true;
+      } else {
+        allDone = false;
+      }
+    }
+    if (justLanded && this._onIntroTick) this._onIntroTick();
+    if (allDone) this._introPlaying = false;
   }
 }

@@ -110,7 +110,12 @@ export class CustomerView {
     this._orderBaseY = 2.1 * traits.bodyScale.sy + 1.6;
     this._orderGroup = buildOrderPreviewGroup(customer.order, 1.36);
     this._orderGroup.position.set(0, this._orderBaseY, 0);
+    this._orderGroup.visible = false;
+    this._orderGroup.scale.setScalar(0);
     this.root.add(this._orderGroup);
+
+    this._orderPopT = -1;
+    this._orderPopDur = 0.35;
 
     // ── Animation state ─────────────────────────────────────────────
     this._idleSeed = Math.random() * Math.PI * 2;
@@ -124,6 +129,31 @@ export class CustomerView {
     this._walkPhase = 0;
 
     this.root.position.set(this._baseX, 0, this._baseZ);
+  }
+
+  // ── Order pop-in ──────────────────────────────────────────────────
+
+  showOrder() {
+    this._orderPopT = 0;
+    this._orderGroup.visible = true;
+    this._orderGroup.scale.setScalar(0);
+    this._orderGroup.position.y = this._orderBaseY - 1.2;
+  }
+
+  _updateOrderPop(dt) {
+    if (this._orderPopT < 0) return;
+    this._orderPopT += dt;
+    const p = Math.min(this._orderPopT / this._orderPopDur, 1);
+    const ease = 1 - (1 - p) * (1 - p);
+    const overshoot = 1 + Math.sin(p * Math.PI) * 0.15;
+    const scale = p < 1 ? ease * overshoot : 1;
+    this._orderGroup.scale.setScalar(scale);
+    this._orderGroup.position.y = this._orderBaseY - 1.2 * (1 - ease);
+    if (p >= 1) {
+      this._orderPopT = -1;
+      this._orderGroup.scale.setScalar(1);
+      this._orderGroup.position.y = this._orderBaseY;
+    }
   }
 
   // ── Celebrate ─────────────────────────────────────────────────────
@@ -455,6 +485,7 @@ export class CustomerView {
       this._updateWaveGesture(dt);
     }
 
+    this._updateOrderPop(dt);
     this._updateMumbleTiming(dt);
   }
 

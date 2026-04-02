@@ -11,6 +11,7 @@ import { createIngredientMesh } from './burgerVisuals.js';
 const COOK_SIDE_SEC = 1;
 const SLIDE_DURATION = 0.3;
 const FLIP_DURATION = 0.22;
+const PLACE_DURATION = 0.25;
 
 const STATE = /** @type {const} */ ({
   IDLE: 'idle',
@@ -19,6 +20,7 @@ const STATE = /** @type {const} */ ({
   COOKING_B: 'cookingSideB',
   COOKED: 'cooked',
   SLIDING: 'sliding',
+  PLACING: 'placing',
 });
 
 const COOKING_COLOR = 0x865332;
@@ -134,6 +136,22 @@ class GrillSlot {
 
   startCooking() {
     if (this.isBusy) return false;
+    this._spawnPatty();
+    this.state = STATE.COOKING_A;
+    this._timer = 0;
+    this._applyVisualState();
+    this._updateBar();
+    return true;
+  }
+
+  reserve() {
+    if (this.isBusy) return false;
+    this.state = STATE.PLACING;
+    return true;
+  }
+
+  confirmPlacement() {
+    if (this.state !== STATE.PLACING) return false;
     this._spawnPatty();
     this.state = STATE.COOKING_A;
     this._timer = 0;
@@ -434,7 +452,7 @@ export class MeatGrill {
 
     // --- Serve plate to the left of the grill ---
     const servePlateY = grillY + grillH / 2 + 0.01;
-    const servePlateZ = grillZ;
+    const servePlateZ = grillZ - 0.30;
     const servePlateX = -(grillW / 2 + 0.55);
     this._servePlatePos = new THREE.Vector3(servePlateX, servePlateY, servePlateZ);
 
@@ -443,26 +461,28 @@ export class MeatGrill {
       roughness: 0.35,
       metalness: 0.15,
     });
-    const plateRim = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.38, 0.04, 24), plateMat);
+    const plateRim = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.48, 0.04, 24), plateMat);
     plateRim.position.copy(this._servePlatePos);
     plateRim.castShadow = true;
     plateRim.receiveShadow = true;
     this._grillGroup.add(plateRim);
 
-    const plateInner = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.32, 0.03, 24), plateMat);
+    const plateInner = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.42, 0.03, 24), plateMat);
     plateInner.position.copy(this._servePlatePos).add(new THREE.Vector3(0, 0.025, 0));
     plateInner.receiveShadow = true;
     this._grillGroup.add(plateInner);
 
     /** @type {THREE.Object3D[]} */
     this._serveStack = [];
-    this._STACK_Y_OFFSET = 0.08;
+    this._STACK_Y_OFFSET = 0.09;
     this._serveMeshPivot = new THREE.Group();
     this._serveMeshPivot.position.copy(this._servePlatePos).add(new THREE.Vector3(0, 0.06, 0));
     this._grillGroup.add(this._serveMeshPivot);
 
     /** @type {{ mesh: THREE.Object3D, startPos: THREE.Vector3, endPos: THREE.Vector3, t: number } | null} */
     this._slideAnim = null;
+    /** @type {{ mesh: THREE.Object3D, slot: GrillSlot, startPos: THREE.Vector3, endPos: THREE.Vector3, t: number } | null} */
+    this._placeAnim = null;
 
     playArea.add(this._grillGroup);
 
@@ -513,6 +533,37 @@ export class MeatGrill {
       }
     }
     return false;
+  }
+
+  startFromPileAnimated(sourceWorldPos) {
+    if (this._placeAnim) return false;
+    let targetSlot = null;
+    for (const slot of this._slots) {
+      if (!slot.isBusy) {
+        targetSlot = slot;
+        break;
+      }
+    }
+    if (!targetSlot) return false;
+
+    targetSlot.reserve();
+
+    const localSource = this._grillGroup.worldToLocal(sourceWorldPos.clone());
+    const localTarget = targetSlot._pivot.position.clone();
+
+    const mesh = createIngredientMesh('meat');
+    mesh.scale.setScalar(1.15);
+    this._grillGroup.add(mesh);
+    mesh.position.copy(localSource);
+
+    this._placeAnim = {
+      mesh,
+      slot: targetSlot,
+      startPos: localSource.clone(),
+      endPos: localTarget.clone(),
+      t: 0,
+    };
+    return true;
   }
 
   /** @returns {'flipped' | 'served' | 'wait' | 'idle'} */
@@ -568,6 +619,21 @@ export class MeatGrill {
       }
     }
 
+    if (this._placeAnim) {
+      this._placeAnim.t += dt;
+      const u = Math.min(1, this._placeAnim.t / PLACE_DURATION);
+      const e = 1 - (1 - u) ** 3;
+      const p = this._placeAnim.startPos.clone().lerp(this._placeAnim.endPos, e);
+      p.y += Math.sin(u * Math.PI) * 0.18;
+      this._placeAnim.mesh.position.copy(p);
+      this._placeAnim.mesh.rotation.x = Math.sin(u * Math.PI) * 0.3;
+      if (u >= 1) {
+        this._placeAnim.mesh.removeFromParent();
+        this._placeAnim.slot.confirmPlacement();
+        this._placeAnim = null;
+      }
+    }
+
     if (this._slideAnim) {
       this._slideAnim.t += dt;
       const u = Math.min(1, this._slideAnim.t / SLIDE_DURATION);
@@ -589,6 +655,10 @@ export class MeatGrill {
   }
 
   reset() {
+    if (this._placeAnim) {
+      this._placeAnim.mesh.removeFromParent();
+      this._placeAnim = null;
+    }
     for (const slot of this._slots) slot.reset();
     for (const m of this._serveStack) {
       const idx = this.raycastTargets.indexOf(m);

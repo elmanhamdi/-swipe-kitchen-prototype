@@ -787,13 +787,13 @@ export function buildRestaurantRoom() {
     const halfW = halfWidthAtZ(zPlane) * 0.92;
     const counterDepth = 0.55;
     const counterHeight = 1.05;
-    const baseY = 0;
-    const zCenter = zPlane + counterDepth / 2 - 0.08;
+    const baseY = 0.2;
+    const zCenter = zPlane + counterDepth / 2 + 1.1;
 
     const bodyGeo = new THREE.BoxGeometry(halfW * 2, counterHeight, counterDepth);
     const bodyMat = darkWoodMat();
     const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.set(0, baseY + counterHeight / 2, zCenter);
+    body.position.set(0.5, baseY + counterHeight / 2, zCenter);
     body.castShadow = true;
     body.receiveShadow = true;
     body.name = 'CounterBody';

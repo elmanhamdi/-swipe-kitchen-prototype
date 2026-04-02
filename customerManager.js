@@ -13,7 +13,7 @@ import { ROOM } from './roomConstants.js';
 
 /** Left / center / right slots in the back (customer) zone. */
 const SLOT_X = [-1.42, 0, 1.42];
-const SLOT_Z = -1.8;
+const SLOT_Z = -0.8;
 /** Start at door opening (walk into / out of room). */
 const DOOR_START_Z = ROOM.zBack + 0.12;
 const WALK_DURATION = 0.8;
@@ -285,6 +285,7 @@ export class CustomerManager {
           phase: 'seated',
           celebrateT: 0,
         });
+        w.view.showOrder();
         this._activeWalk = null;
       }
     }
