@@ -243,34 +243,70 @@
         margin: 0 0 clamp(18px, 4vmin, 24px);
         font: 700 clamp(1rem, 3.2vmin, 1.2rem) system-ui, sans-serif;
         color: #ffd873;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: clamp(8px, 2vmin, 10px);
       }
 
       .game-over-panel__btn {
         border: none;
-        border-radius: clamp(12px, 3vmin, 16px);
-        padding: clamp(12px, 3vmin, 16px) clamp(28px, 8vmin, 40px);
-        font: 800 clamp(14px, 3.5vmin, 17px) system-ui, sans-serif;
-        color: #1a1408;
-        background: linear-gradient(180deg, #f0c85c, #d9a62e);
-        box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25);
+        border-radius: 50%;
         cursor: pointer;
         touch-action: manipulation;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+        transition: transform 0.12s ease;
       }
 
       .game-over-panel__btn:active {
-        transform: translateY(2px);
+        transform: translateY(2px) scale(0.95);
       }
 
       .game-over-panel__btns {
         display: flex;
-        gap: clamp(8px, 2vmin, 14px);
+        gap: clamp(16px, 4vmin, 24px);
         justify-content: center;
+        align-items: center;
         flex-wrap: wrap;
       }
 
+      .game-over-panel__btn--play {
+        width: clamp(72px, 18vmin, 96px);
+        height: clamp(72px, 18vmin, 96px);
+        background: linear-gradient(180deg, #f0c85c, #d9a62e);
+        box-shadow:
+          0 4px 16px rgba(217, 166, 46, 0.45),
+          0 0 0 3px rgba(255, 220, 100, 0.25);
+      }
+
+      .game-over-panel__btn--play .game-over-panel__btn-icon {
+        width: clamp(36px, 9vmin, 48px);
+        height: clamp(36px, 9vmin, 48px);
+      }
+
       .game-over-panel__btn--shop {
-        background: linear-gradient(180deg, #74c0fc, #4a90d9);
-        color: #0a1a2e;
+        width: clamp(52px, 13vmin, 68px);
+        height: clamp(52px, 13vmin, 68px);
+        background: linear-gradient(180deg, #ffffff, #e8e8e8);
+        box-shadow:
+          0 4px 14px rgba(0, 0, 0, 0.2),
+          0 0 0 2px rgba(255, 255, 255, 0.3);
+      }
+
+      .game-over-panel__btn--shop .game-over-panel__btn-icon {
+        width: clamp(24px, 6vmin, 32px);
+        height: clamp(24px, 6vmin, 32px);
+      }
+
+      .game-over-panel__btn-icon,
+      .ui-inline-icon {
+        width: clamp(18px, 4.2vmin, 24px);
+        height: clamp(18px, 4.2vmin, 24px);
+        object-fit: contain;
+        flex-shrink: 0;
       }
 
       /* ──── Shop overlay ──────────────────────────────── */
@@ -324,6 +360,9 @@
         letter-spacing: 0.08em;
       }
       .shop-header__coins {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
         font: 700 clamp(0.85rem, 2.8vmin, 1rem) system-ui, sans-serif;
         color: #ffd873;
       }
@@ -568,26 +607,27 @@
         position: absolute;
         right: clamp(12px, 3vmin, 20px);
         top: 50%;
-        font: 900 clamp(0.6rem, 2.2vmin, 0.84rem) / 1 ui-sans-serif, system-ui, sans-serif;
-        letter-spacing: 0.04em;
-        color: #1b5e20;
+        font: 900 clamp(1.1rem, 4vmin, 1.6rem) / 1 ui-sans-serif, system-ui, sans-serif;
+        letter-spacing: 0.05em;
+        color: #4fc3f7;
         text-shadow:
-          0 0 10px rgba(76, 175, 80, 0.6),
-          0 1px 2px rgba(0, 0, 0, 0.4);
+          0 0 14px rgba(79, 195, 247, 0.8),
+          0 0 28px rgba(33, 150, 243, 0.5),
+          0 1px 3px rgba(0, 0, 0, 0.5);
         opacity: 0;
-        transform: translateY(-50%) scale(0.88);
+        transform: translateY(-50%) scale(0.5);
         transform-origin: center center;
         transition:
-          opacity 0.12s ease-out,
-          transform 0.12s ease-out;
+          opacity 0.15s ease-out,
+          transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
         pointer-events: none;
         white-space: nowrap;
-        z-index: 1;
+        z-index: 10;
       }
 
       .game-hud__timer-bonus--show {
         opacity: 1;
-        transform: translateY(-50%) scale(1);
+        transform: translateY(-50%) scale(1.1);
       }
 
       .game-hud__timer--low {
@@ -648,6 +688,7 @@
         flex-shrink: 0;
         width: clamp(1.25rem, 3.8vmin, 1.85rem);
         height: clamp(1.25rem, 3.8vmin, 1.85rem);
+        object-fit: contain;
         filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
       }
 
@@ -1357,10 +1398,17 @@
             </div>
             <div class="game-over-panel">
               <h2 class="game-over-panel__title">TIME UP</h2>
-              <p class="game-over-panel__coins" id="game-over-coins">0 coins</p>
+              <p class="game-over-panel__coins">
+                <img class="ui-inline-icon" src="./assets/ui/coin.png" alt="" aria-hidden="true" draggable="false" />
+                <span id="game-over-coins">0 coins</span>
+              </p>
               <div class="game-over-panel__btns">
-                <button type="button" class="game-over-panel__btn" id="play-again-btn">Play Again</button>
-                <button type="button" class="game-over-panel__btn game-over-panel__btn--shop" id="shop-btn">Shop</button>
+                <button type="button" class="game-over-panel__btn game-over-panel__btn--play" id="play-again-btn" aria-label="Play Again">
+                  <img class="game-over-panel__btn-icon" src="./assets/ui/play-again.png" alt="" aria-hidden="true" draggable="false" />
+                </button>
+                <button type="button" class="game-over-panel__btn game-over-panel__btn--shop" id="shop-btn" aria-label="Shop">
+                  <img class="game-over-panel__btn-icon" src="./assets/ui/shop.png" alt="" aria-hidden="true" draggable="false" />
+                </button>
               </div>
             </div>
           </div>
@@ -1368,7 +1416,10 @@
             <div class="shop-panel">
               <div class="shop-header">
                 <h2 class="shop-header__title">SHOP</h2>
-                <span class="shop-header__coins" id="shop-coins">0 coins</span>
+                <span class="shop-header__coins">
+                  <img class="ui-inline-icon" src="./assets/ui/coin.png" alt="" aria-hidden="true" draggable="false" />
+                  <span id="shop-coins">0 coins</span>
+                </span>
                 <button class="shop-header__close" id="shop-close-btn" aria-label="Close shop">&times;</button>
               </div>
               <div class="shop-tabs" id="shop-tabs">
@@ -1401,27 +1452,7 @@
               </div>
               <div class="game-hud__coins" id="coins-display" aria-live="polite" aria-atomic="true">
                 <span id="coins-value" class="game-hud__coins-value">0</span>
-                <svg class="game-hud__coins-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <defs>
-                    <linearGradient id="hud-coin-g" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stop-color="#fff4a8" />
-                      <stop offset="45%" stop-color="#e8b020" />
-                      <stop offset="100%" stop-color="#b8860b" />
-                    </linearGradient>
-                  </defs>
-                  <circle cx="12" cy="12" r="9.5" fill="url(#hud-coin-g)" stroke="#7a5a10" stroke-width="1" />
-                  <text
-                    x="12"
-                    y="13.5"
-                    text-anchor="middle"
-                    font-size="10"
-                    font-weight="800"
-                    fill="#5c4308"
-                    font-family="system-ui, sans-serif"
-                  >
-                    $
-                  </text>
-                </svg>
+                <img class="game-hud__coins-icon" src="./assets/ui/coin.png" alt="" aria-hidden="true" draggable="false" />
               </div>
             </div>
           </div>
@@ -1443,7 +1474,7 @@
             <div class="hud-info-modal__panel">
               <button type="button" class="hud-info-modal__close" id="hud-info-close" aria-label="Close">×</button>
               <p id="hud-info-title" class="hud-info-modal__text">
-                Tap a pile to build — bun first. Trash can clears stack.
+                Tap a pile to build — bun first. Tap the dog to clear your plate.
               </p>
             </div>
           </div>

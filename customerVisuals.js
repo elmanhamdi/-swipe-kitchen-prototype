@@ -55,6 +55,13 @@ export class CustomerView {
     /** @type {'big'|'small'|'both'} */
     this._waveStyle = 'big';
 
+    // ── Knockback state ─────────────────────────────────────────────
+    this._knockbackActive = false;
+    this._knockbackPhase = 0;
+    /** @type {THREE.Group | null} */
+    this._dizzyStars = null;
+    this._dizzyPhase = 0;
+
     this._mumbleArrivalDelay = 0.3 + Math.random() * 0.5;
     this._mumbleCooldown = 9 + Math.random() * 16;
     this._wantsMumble = false;
@@ -514,6 +521,221 @@ export class CustomerView {
     if (!this._wantsMumble) return null;
     this._wantsMumble = false;
     return this.voiceProfile;
+  }
+
+  // ── Knockback animation ──────────────────────────────────────────
+
+  /** @param {boolean} [isKO] */
+  startKnockback(isKO = false) {
+    this._knockbackActive = true;
+    this._knockbackIsKO = isKO;
+    this._knockbackPhase = 0;
+    this._orderGroup.visible = false;
+    this._waveActive = false;
+    this.root.scale.set(1, 1, 1);
+    this._squashDur = 0;
+  }
+
+  /** @param {number} dt */
+  updateKnockback(dt) {
+    if (!this._knockbackActive) return;
+    this._knockbackPhase += dt;
+    const p = this._knockbackPhase;
+
+    if (this._knockbackIsKO) {
+      const tilt = Math.min(1.3, p * 3.2);
+      this._charRoot.rotation.x = -tilt;
+      this._charRoot.rotation.z = Math.sin(p * 10) * 0.15;
+
+      this._leftArm.rotation.x = -1.8 + Math.sin(p * 12) * 0.5;
+      this._rightArm.rotation.x = -1.8 + Math.sin(p * 12 + Math.PI) * 0.5;
+      this._leftArm.rotation.z = -0.9 + Math.sin(p * 8) * 0.3;
+      this._rightArm.rotation.z = 0.9 + Math.sin(p * 8 + Math.PI) * 0.3;
+      this._leftElbow.rotation.x = -1.0 + Math.sin(p * 14) * 0.3;
+      this._rightElbow.rotation.x = -1.0 + Math.sin(p * 14 + Math.PI) * 0.3;
+
+      this._leftLeg.rotation.x = 0.3 + Math.sin(p * 9) * 0.25;
+      this._leftLeg.rotation.z = -0.2;
+      this._rightLeg.rotation.x = 0.3 + Math.sin(p * 9 + Math.PI) * 0.25;
+      this._rightLeg.rotation.z = 0.2;
+
+      this._headGroup.rotation.z = Math.sin(p * 13) * 0.18;
+      this._headGroup.rotation.x = Math.sin(p * 8) * 0.12;
+
+      if (p < 0.35) {
+        this.root.position.y = Math.sin((p / 0.35) * Math.PI) * 0.35;
+      } else {
+        this.root.position.y *= 0.82;
+        if (this.root.position.y < 0.01) this.root.position.y = 0;
+      }
+    } else {
+      this._charRoot.rotation.x = -0.35 + Math.sin(p * 8) * 0.12;
+      this._charRoot.rotation.z = Math.sin(p * 12) * 0.2;
+
+      this._leftArm.rotation.x = -1.2 + Math.sin(p * 14) * 0.7;
+      this._rightArm.rotation.x = -1.2 + Math.sin(p * 14 + Math.PI) * 0.7;
+      this._leftArm.rotation.z = -0.6 + Math.sin(p * 10) * 0.4;
+      this._rightArm.rotation.z = 0.6 + Math.sin(p * 10 + Math.PI) * 0.4;
+      this._leftElbow.rotation.x = -0.8 + Math.sin(p * 16) * 0.4;
+      this._rightElbow.rotation.x = -0.8 + Math.sin(p * 16 + Math.PI) * 0.4;
+
+      this._leftLeg.rotation.x = Math.sin(p * 11) * 0.45;
+      this._rightLeg.rotation.x = Math.sin(p * 11 + Math.PI) * 0.45;
+
+      this._headGroup.rotation.z = Math.sin(p * 15) * 0.12;
+      this._headGroup.rotation.x = Math.sin(p * 10) * 0.08 - 0.08;
+
+      if (p < 0.3) {
+        this.root.position.y = Math.sin((p / 0.3) * Math.PI) * 0.18;
+      } else {
+        this.root.position.y *= 0.88;
+        if (this.root.position.y < 0.01) this.root.position.y = 0;
+      }
+    }
+  }
+
+  /** Lying on the ground after a full K.O. @param {number} dt */
+  updateKOGround(dt) {
+    this._knockbackPhase += dt;
+    const p = this._knockbackPhase;
+
+    this._charRoot.rotation.x = -1.3;
+    this._charRoot.rotation.z = Math.sin(p * 0.8) * 0.03;
+
+    const twitch = Math.sin(p * 7) > 0.92 ? 0.15 : 0;
+    this._leftLeg.rotation.x = 0.3 + twitch;
+    this._leftLeg.rotation.z = -0.2;
+    this._rightLeg.rotation.x = 0.3;
+    this._rightLeg.rotation.z = 0.2;
+
+    this._leftArm.rotation.x = -0.2;
+    this._leftArm.rotation.z = -0.8;
+    this._rightArm.rotation.x = -0.2;
+    this._rightArm.rotation.z = 0.8;
+    this._leftElbow.rotation.x = -0.3;
+    this._rightElbow.rotation.x = -0.3;
+
+    this._headGroup.rotation.x = -0.12;
+    this._headGroup.rotation.z = Math.sin(p * 1.5) * 0.05;
+
+    this.root.position.y = 0;
+  }
+
+  _buildDizzyStars() {
+    if (this._dizzyStars) return;
+    const group = new THREE.Group();
+    group.name = 'DizzyStars';
+    const starGeo = new THREE.OctahedronGeometry(0.055, 0);
+    for (let i = 0; i < 4; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: i % 2 === 0 ? 0xffdd44 : 0xffffff,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+      });
+      group.add(new THREE.Mesh(starGeo, mat));
+    }
+    group.position.y = this._orderBaseY - 0.2;
+    group.visible = false;
+    this.root.add(group);
+    this._dizzyStars = group;
+  }
+
+  startDizzyStars() {
+    this._buildDizzyStars();
+    this._dizzyStars.visible = true;
+    this._dizzyPhase = 0;
+    for (const star of this._dizzyStars.children) {
+      star.material.opacity = 0;
+    }
+  }
+
+  /** @param {number} dt @param {number} [fadeOut] 0–1, 1 = fully visible */
+  updateDizzyStars(dt, fadeOut = 1) {
+    if (!this._dizzyStars?.visible) return;
+    this._dizzyPhase += dt;
+    const stars = this._dizzyStars.children;
+    const r = 0.38;
+    for (let i = 0; i < stars.length; i++) {
+      const angle = this._dizzyPhase * 4.5 + (i / stars.length) * Math.PI * 2;
+      stars[i].position.set(
+        Math.cos(angle) * r,
+        Math.sin(this._dizzyPhase * 3 + i) * 0.07,
+        Math.sin(angle) * r,
+      );
+      stars[i].rotation.y = this._dizzyPhase * 6;
+      stars[i].rotation.x = this._dizzyPhase * 3;
+      const baseOpacity = Math.min(1, this._dizzyPhase * 4);
+      stars[i].material.opacity = baseOpacity * fadeOut;
+    }
+  }
+
+  hideDizzyStars() {
+    if (this._dizzyStars) this._dizzyStars.visible = false;
+  }
+
+  /** @param {number} dt @param {number} progress 0→1 */
+  updateRecover(dt, progress) {
+    if (this._knockbackIsKO) {
+      this._charRoot.rotation.x = THREE.MathUtils.lerp(-1.3, 0, progress);
+      this._charRoot.rotation.z = Math.sin(progress * Math.PI * 3) * 0.08 * (1 - progress);
+
+      const wobble = Math.sin(progress * Math.PI * 4) * 0.1 * (1 - progress);
+      this._leftArm.rotation.x = THREE.MathUtils.lerp(-0.2, 0, progress) + wobble;
+      this._rightArm.rotation.x = THREE.MathUtils.lerp(-0.2, 0, progress) - wobble;
+      this._leftArm.rotation.z = THREE.MathUtils.lerp(-0.8, -0.05, progress);
+      this._rightArm.rotation.z = THREE.MathUtils.lerp(0.8, 0.05, progress);
+      this._leftElbow.rotation.x = THREE.MathUtils.lerp(-0.3, -0.12, progress);
+      this._rightElbow.rotation.x = THREE.MathUtils.lerp(-0.3, -0.12, progress);
+
+      this._leftLeg.rotation.x = THREE.MathUtils.lerp(0.3, 0, progress);
+      this._leftLeg.rotation.z = THREE.MathUtils.lerp(-0.2, 0, progress);
+      this._rightLeg.rotation.x = THREE.MathUtils.lerp(0.3, 0, progress);
+      this._rightLeg.rotation.z = THREE.MathUtils.lerp(0.2, 0, progress);
+
+      this._headGroup.rotation.x = THREE.MathUtils.lerp(-0.12, 0, progress);
+      this._headGroup.rotation.z = Math.sin(progress * Math.PI * 2) * 0.06 * (1 - progress);
+
+      this.root.position.y = 0;
+    } else {
+      const d = 0.86;
+      this._charRoot.rotation.x *= d;
+      this._charRoot.rotation.z *= d;
+      this._leftArm.rotation.x *= d;
+      this._rightArm.rotation.x *= d;
+      this._leftArm.rotation.z = THREE.MathUtils.lerp(this._leftArm.rotation.z, -0.05, 0.12);
+      this._rightArm.rotation.z = THREE.MathUtils.lerp(this._rightArm.rotation.z, 0.05, 0.12);
+      this._leftElbow.rotation.x = THREE.MathUtils.lerp(this._leftElbow.rotation.x, -0.12, 0.12);
+      this._rightElbow.rotation.x = THREE.MathUtils.lerp(this._rightElbow.rotation.x, -0.12, 0.12);
+      this._leftLeg.rotation.x *= d;
+      this._rightLeg.rotation.x *= d;
+      this._headGroup.rotation.z *= d;
+      this._headGroup.rotation.x *= d;
+      this.root.position.y = 0;
+    }
+
+    const fade = progress > 0.6 ? Math.max(0, (1 - progress) / 0.4) : 1;
+    this.updateDizzyStars(dt, fade);
+  }
+
+  endKnockback() {
+    this._knockbackActive = false;
+    this._knockbackIsKO = false;
+    this._charRoot.rotation.set(0, 0, 0);
+    this._leftArm.rotation.set(0, 0, 0);
+    this._rightArm.rotation.set(0, 0, 0);
+    this._leftElbow.rotation.x = -0.12;
+    this._rightElbow.rotation.x = -0.12;
+    this._leftLeg.rotation.set(0, 0, 0);
+    this._rightLeg.rotation.set(0, 0, 0);
+    this._headGroup.rotation.set(0, 0, 0);
+    this._torso.rotation.set(0, 0, 0);
+    this.root.position.y = 0;
+    this.hideDizzyStars();
+    this._orderGroup.visible = true;
+    this._orderPopT = 0;
+    this._orderGroup.scale.setScalar(0);
+    this._orderGroup.position.y = this._orderBaseY - 1.2;
   }
 
   // ── Cleanup ───────────────────────────────────────────────────────

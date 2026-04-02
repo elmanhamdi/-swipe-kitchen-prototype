@@ -9,7 +9,8 @@ import {
   pickRandomFreeSlot,
 } from './customerData.js';
 import { CustomerView } from './customerVisuals.js';
-import { ROOM } from './roomConstants.js';
+import { ROOM, halfWidthAtZ } from './roomConstants.js';
+import { sphereVsAabb } from './roomCollisions.js';
 
 /** Left / center / right slots in the back (customer) zone. */
 const SLOT_X = [-1.42, 0, 1.42];
@@ -23,7 +24,7 @@ const RAMP_INTERVAL_SEC = 10;
 const RAMP_MAX_CUSTOMERS = 3;
 
 /**
- * @typedef {'seated' | 'celebrate'} EntryPhase
+ * @typedef {'seated' | 'celebrate' | 'knockback' | 'ko_ground' | 'recover'} EntryPhase
  */
 
 /**
@@ -69,6 +70,12 @@ export class CustomerManager {
     this._gameplayElapsed = 0;
     /** @type {string[] | null} */
     this._forcedNextOrder = null;
+
+    /** Table AABBs for knockback collision (set externally from main). */
+    this._tableAabbs = [];
+    /** @type {((tableIndex: number, impactPos: THREE.Vector3) => void) | null} */
+    this._onKnockbackTableHit = null;
+    this._knockbackTmpPos = new THREE.Vector3();
   }
 
   /** Call when player taps Open — starts spawning / walk-ins. */
@@ -171,6 +178,7 @@ export class CustomerManager {
     this._gameplayElapsed += dt;
     this.fillToMax();
 
+    this._updateKnockbacks(dt);
     this._updateCelebrations(dt);
     this._updateWalkIn(dt);
     this._updateExit(dt);
@@ -208,6 +216,138 @@ export class CustomerManager {
         view.setFacingTarget(Math.PI);
         this.entries.splice(i, 1);
         this._exitQueue.push({ customer, view, slotIndex, startX, startZ });
+      }
+    }
+  }
+
+  /**
+   * Knockback physics: slide with friction, bounce off walls/tables, then recover.
+   * @param {number} dt
+   */
+  _updateKnockbacks(dt) {
+    const FRICTION = 0.06;
+    const MAX_T = 1.5;
+    const MIN_SPEED = 0.4;
+    const CUST_R = 0.45;
+    const RECOVER_DUR = 0.8;
+    const KO_GROUND_DUR = 1.5;
+    const KO_RECOVER_DUR = 1.5;
+
+    for (let i = this.entries.length - 1; i >= 0; i--) {
+      const e = this.entries[i];
+
+      if (e.phase === 'knockback') {
+        e.knockbackT += dt;
+
+        const k = Math.exp(-FRICTION * dt * 60);
+        e.knockbackVelX *= k;
+        e.knockbackVelZ *= k;
+
+        e.view.root.position.x += e.knockbackVelX * dt;
+        e.view.root.position.z += e.knockbackVelZ * dt;
+
+        const px = e.view.root.position.x;
+        const pz = e.view.root.position.z;
+
+        const hw = halfWidthAtZ(pz) - CUST_R - 0.1;
+        if (px < -hw) {
+          e.view.root.position.x = -hw;
+          e.knockbackVelX = Math.abs(e.knockbackVelX) * 0.3;
+        } else if (px > hw) {
+          e.view.root.position.x = hw;
+          e.knockbackVelX = -Math.abs(e.knockbackVelX) * 0.3;
+        }
+
+        const backLimit = ROOM.zBack + CUST_R + 0.15;
+        if (e.view.root.position.z < backLimit) {
+          e.view.root.position.z = backLimit;
+          e.knockbackVelZ = Math.abs(e.knockbackVelZ) * 0.3;
+        }
+        const fwdLimit = SLOT_Z + 0.3;
+        if (e.view.root.position.z > fwdLimit) {
+          e.view.root.position.z = fwdLimit;
+          e.knockbackVelZ = -Math.abs(e.knockbackVelZ) * 0.3;
+        }
+
+        for (let ti = 0; ti < this._tableAabbs.length; ti++) {
+          const box = this._tableAabbs[ti];
+          if (!box) continue;
+          this._knockbackTmpPos.set(e.view.root.position.x, 0.5, e.view.root.position.z);
+          if (sphereVsAabb(this._knockbackTmpPos, CUST_R, box)) {
+            const impactPos = new THREE.Vector3(e.view.root.position.x, 0.5, e.view.root.position.z);
+            this._onKnockbackTableHit?.(ti, impactPos);
+            e.knockbackVelX *= -0.3;
+            e.knockbackVelZ *= -0.3;
+            const cx = (box.min.x + box.max.x) / 2;
+            const cz = (box.min.z + box.max.z) / 2;
+            const dx = e.view.root.position.x - cx;
+            const dz = e.view.root.position.z - cz;
+            const dist = Math.sqrt(dx * dx + dz * dz) || 1;
+            e.view.root.position.x += (dx / dist) * 0.35;
+            e.view.root.position.z += (dz / dist) * 0.35;
+            break;
+          }
+        }
+
+        e.view.updateKnockback(dt);
+
+        const speed = Math.sqrt(e.knockbackVelX ** 2 + e.knockbackVelZ ** 2);
+        if (speed < MIN_SPEED || e.knockbackT > MAX_T) {
+          if (e.knockbackIsKO) {
+            e.phase = 'ko_ground';
+            e.koGroundT = 0;
+            e.view.startDizzyStars();
+          } else {
+            e.phase = 'recover';
+            e.recoverT = 0;
+            e.recoverStartX = e.view.root.position.x;
+            e.recoverStartZ = e.view.root.position.z;
+            e.view.startDizzyStars();
+          }
+        }
+      }
+
+      if (e.phase === 'ko_ground') {
+        e.koGroundT += dt;
+        e.view.updateKOGround(dt);
+        e.view.updateDizzyStars(dt);
+        if (e.koGroundT >= KO_GROUND_DUR) {
+          e.phase = 'recover';
+          e.recoverT = 0;
+          e.recoverStartX = e.view.root.position.x;
+          e.recoverStartZ = e.view.root.position.z;
+        }
+      }
+
+      if (e.phase === 'recover') {
+        e.recoverT += dt;
+        const dur = e.knockbackIsKO ? KO_RECOVER_DUR : RECOVER_DUR;
+        const u = Math.min(1, e.recoverT / dur);
+        const ease = 1 - (1 - u) * (1 - u);
+
+        if (e.knockbackShouldLeave) {
+          e.view.updateRecover(dt, u);
+          if (u >= 1) {
+            const { customer, view } = e;
+            const slotIndex = customer.slotIndex;
+            const startX = view.root.position.x;
+            const startZ = view.root.position.z;
+            view.endKnockback();
+            view.setFacingTarget(Math.PI);
+            this.entries.splice(i, 1);
+            this._exitQueue.push({ customer, view, slotIndex, startX, startZ });
+          }
+        } else {
+          e.view.root.position.x = THREE.MathUtils.lerp(
+            e.recoverStartX, e.customer.position.x, ease);
+          e.view.root.position.z = THREE.MathUtils.lerp(
+            e.recoverStartZ, e.customer.position.z, ease);
+          e.view.updateRecover(dt, u);
+          if (u >= 1) {
+            e.phase = 'seated';
+            e.view.endKnockback();
+          }
+        }
       }
     }
   }
@@ -357,12 +497,31 @@ export class CustomerManager {
     if (e) e.view.playHitFlash();
   }
 
-  /** Wrong-order splat: flash + big squash. */
-  notifyWrongHit(entryIndex) {
+  /**
+   * Wrong-order splat → knockback with physics. ~20 % chance of full K.O.
+   * @param {number} entryIndex
+   * @param {{ x: number, z: number }} [impactDir] normalized XZ direction of the projectile
+   * @returns {{ isKO: boolean } | null}
+   */
+  notifyWrongHit(entryIndex, impactDir) {
     const e = this.entries[entryIndex];
-    if (!e || e.phase !== 'seated') return;
+    if (!e || e.phase !== 'seated') return null;
     e.view.playHitSquash('hard');
     e.view.playHitFlash();
+
+    const isKO = Math.random() < 0.2;
+    const dir = impactDir ?? { x: 0, z: -1 };
+    const speed = isKO ? (12 + Math.random() * 5) : (7 + Math.random() * 4);
+    const spread = (Math.random() - 0.5) * 0.4;
+    e.phase = 'knockback';
+    e.knockbackVelX = dir.x * speed + spread;
+    e.knockbackVelZ = dir.z * speed;
+    e.knockbackT = 0;
+    e.knockbackIsKO = isKO;
+    e.knockbackShouldLeave = isKO || Math.random() < 0.35;
+    e.view.startKnockback(isKO);
+    e.customer.state = 'angry';
+    return { isKO };
   }
 
   /** Play Again: clear customers; player must tap Open again. */

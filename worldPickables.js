@@ -1,5 +1,5 @@
 /**
- * 3D ingredient piles + trash can; raycast pick helper.
+ * 3D ingredient piles + dog character; raycast pick helper.
  */
 
 import * as THREE from 'three';
@@ -10,7 +10,7 @@ const _ndc = new THREE.Vector2();
 
 const PILE_SCALE = 0.38 * 3;
 const PILE_LAYER_Y = 0.06 * 3;
-const TRASH_SHAKE_DURATION = 0.34;
+const DOG_EAT_DURATION = 0.6;
 
 function getPileAccentColor(pickKey) {
   switch (pickKey) {
@@ -34,7 +34,7 @@ function findPickRoot(obj) {
   while (o) {
     if (o.userData?.pickGrillPatty) return { kind: 'grillPatty', root: o };
     if (o.userData?.pickIngredient) return { kind: 'ingredient', type: o.userData.pickIngredient, root: o };
-    if (o.userData?.isTrash) return { kind: 'trash', root: o };
+    if (o.userData?.isDog) return { kind: 'dog', root: o };
     if (o.userData?.openShop) return { kind: 'open', root: o };
     o = o.parent;
   }
@@ -56,8 +56,12 @@ export class WorldPickables {
     /** @type {THREE.Object3D[]} */
     this._meshes = [];
     this._pileRoots = new Map();
-    this._trashShakeT = 0;
-    this._trashLid = null;
+    this._dogEatT = 0;
+    this._dogTime = 0;
+    this._dogMealsEaten = 0;
+    this._dogNextBarkT = 5 + Math.random() * 5;
+    this._dogBarkAnimT = 0;
+    this._onDogBark = null;
     const deskTex = new THREE.TextureLoader().load('./assets/textures/desk.png');
     deskTex.colorSpace = THREE.SRGBColorSpace;
     deskTex.wrapS = THREE.RepeatWrapping;
@@ -133,67 +137,144 @@ export class WorldPickables {
 
     const pileY = tableH + tableTopThick / 2 + 0.08;
     this._pileItems = [];
-    this._addIngredientPile('lettuce', -1.5, 0.5, pileY);
-    this._addIngredientPile('tomato', -1.7, 1.5, pileY);
+    this._addIngredientPile('lettuce', -1.4, 0.5, pileY);
+    this._addIngredientPile('tomato', -1.5, 1.5, pileY);
 
-    this._addIngredientPile('cheese', 1.7, 1.5, pileY);
+    this._addIngredientPile('cheese', 1.5, 1.5, pileY);
     this._addIngredientPile('meat', 1.4, -0.8, pileY);
-    this._addIngredientPile('bun', 1.5, 0.5, pileY);
+    this._addIngredientPile('bun', 1.4, 0.5, pileY);
 
     this._introAnims = [];
     this._introPlaying = false;
     this._onIntroTick = null;
 
-    const trashMat = new THREE.MeshStandardMaterial({
-      color: 0x4f7d89,
-      roughness: 0.66,
-      metalness: 0.28,
-      emissive: 0x102a33,
-      emissiveIntensity: 0.12,
+    this._buildDog();
+  }
+
+  _buildDog() {
+    const furMat = new THREE.MeshStandardMaterial({
+      color: 0xc8943e, roughness: 0.82, metalness: 0.05,
+      emissive: 0x2a1a08, emissiveIntensity: 0.08,
     });
-    const trashX = -1.3;
-    const trashZ = 2.75;
-    const trashRoot = new THREE.Group();
-    trashRoot.position.set(trashX, 0, trashZ);
-    this.group.add(trashRoot);
+    const bellyMat = new THREE.MeshStandardMaterial({
+      color: 0xe8c080, roughness: 0.85, metalness: 0.03,
+    });
+    const darkMat = new THREE.MeshStandardMaterial({
+      color: 0x222222, roughness: 0.4, metalness: 0.15,
+    });
+    const tongueMat = new THREE.MeshStandardMaterial({
+      color: 0xe85070, roughness: 0.7, metalness: 0.0,
+    });
+    const eyeHighlightMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff, roughness: 0.2, metalness: 0.1,
+      emissive: 0xffffff, emissiveIntensity: 0.3,
+    });
 
-    const trash = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.2 * 2, 0.26 * 2, 0.42 * 2, 16),
-      trashMat,
-    );
-    trash.position.set(0, 0.27 * 2, 0);
-    trash.castShadow = true;
-    trash.receiveShadow = true;
-    trash.userData.isTrash = true;
-    trashRoot.add(trash);
-    this._meshes.push(trash);
+    const dogRoot = new THREE.Group();
+    dogRoot.position.set(-1.3, 0, 2.7);
+    dogRoot.rotation.z = Math.PI * 0.1;
+    dogRoot.rotation.y = Math.PI * 0.2;
+    dogRoot.rotation.x = Math.PI * -0.3;
+    dogRoot.scale.setScalar(1.8);
+    this.group.add(dogRoot);
+    this._dogRoot = dogRoot;
 
-    const lidPivot = new THREE.Group();
-    lidPivot.position.set(0, 0.44 * 2 + 0.02, 0);
-    trashRoot.add(lidPivot);
-    this._trashLid = lidPivot;
+    const dogBody = new THREE.Group();
+    dogRoot.add(dogBody);
+    this._dogBody = dogBody;
 
-    const lidCap = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.215 * 2, 0.215 * 2, 0.03 * 2, 18),
-      trashMat,
-    );
-    lidCap.position.set(0, 0.01, 0);
-    lidCap.castShadow = true;
-    lidCap.receiveShadow = true;
-    lidCap.userData.isTrash = true;
-    lidPivot.add(lidCap);
-    this._meshes.push(lidCap);
+    const _m = (geo, mat, pos, scale, rot) => {
+      const m = new THREE.Mesh(geo, mat);
+      if (pos) m.position.set(...pos);
+      if (scale) {
+        if (typeof scale === 'number') m.scale.setScalar(scale);
+        else m.scale.set(...scale);
+      }
+      if (rot) m.rotation.set(...rot);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      m.userData.isDog = true;
+      this._meshes.push(m);
+      return m;
+    };
 
-    const rim = new THREE.Mesh(
-      new THREE.TorusGeometry(0.22 * 2, 0.028 * 2, 8, 22),
-      trashMat,
-    );
-    rim.rotation.x = Math.PI / 2;
-    rim.position.set(0, 0.02, 0);
-    rim.userData.isTrash = true;
-    lidPivot.add(rim);
-    this._meshes.push(rim);
+    const bodySphere = new THREE.SphereGeometry(0.22, 14, 10);
+    const body = _m(bodySphere, furMat, [0, 0.38, 0], [1, 0.85, 1.3]);
+    dogBody.add(body);
+    this._dogBodyMesh = body;
 
+    const bellyMesh = _m(new THREE.SphereGeometry(0.14, 10, 8), bellyMat, [0, 0.32, 0.06], [0.9, 0.75, 1.0]);
+    dogBody.add(bellyMesh);
+    this._dogBellyMesh = bellyMesh;
+
+    const headPivot = new THREE.Group();
+    headPivot.position.set(0, 0.55, 0.22);
+    dogBody.add(headPivot);
+    this._dogHeadPivot = headPivot;
+
+    const headMesh = _m(new THREE.SphereGeometry(0.17, 12, 10), furMat, [0, 0, 0]);
+    headPivot.add(headMesh);
+
+    const snout = _m(new THREE.SphereGeometry(0.09, 10, 8), furMat, [0, -0.04, 0.14], [0.8, 0.65, 1.0]);
+    headPivot.add(snout);
+
+    const nose = _m(new THREE.SphereGeometry(0.038, 8, 6), darkMat, [0, -0.02, 0.21]);
+    headPivot.add(nose);
+
+    const eyeGeo = new THREE.SphereGeometry(0.038, 8, 6);
+    headPivot.add(_m(eyeGeo, darkMat, [-0.075, 0.045, 0.12]));
+    headPivot.add(_m(eyeGeo, darkMat, [0.075, 0.045, 0.12]));
+
+    const hlGeo = new THREE.SphereGeometry(0.014, 6, 4);
+    const hlL = new THREE.Mesh(hlGeo, eyeHighlightMat);
+    hlL.position.set(-0.065, 0.055, 0.145);
+    headPivot.add(hlL);
+    const hlR = new THREE.Mesh(hlGeo, eyeHighlightMat);
+    hlR.position.set(0.085, 0.055, 0.145);
+    headPivot.add(hlR);
+
+    const earGeo = new THREE.SphereGeometry(0.12, 10, 8);
+    const earInnerMat = new THREE.MeshStandardMaterial({
+      color: 0xd4886a, roughness: 0.75, metalness: 0.03,
+    });
+    const earInnerGeo = new THREE.SphereGeometry(0.065, 8, 6);
+
+    const earL = _m(earGeo, furMat, [-0.15, -0.01, -0.01], [0.45, 1.3, 0.75], [0, 0, 0.35]);
+    headPivot.add(earL);
+    const earInnerL = _m(earInnerGeo, earInnerMat, [-0.15, -0.03, 0.01], [0.3, 0.9, 0.5], [0, 0, 0.35]);
+    headPivot.add(earInnerL);
+
+    const earR = _m(earGeo, furMat, [0.15, -0.01, -0.01], [0.45, 1.3, 0.75], [0, 0, -0.35]);
+    headPivot.add(earR);
+    const earInnerR = _m(earInnerGeo, earInnerMat, [0.15, -0.03, 0.01], [0.3, 0.9, 0.5], [0, 0, -0.35]);
+    headPivot.add(earInnerR);
+
+    const tongue = _m(new THREE.SphereGeometry(0.04, 8, 6), tongueMat, [0, -0.09, 0.17], [0.7, 0.3, 1.0]);
+    headPivot.add(tongue);
+    this._dogTongue = tongue;
+
+    const tailPivot = new THREE.Group();
+    tailPivot.position.set(0, 0.44, -0.26);
+    dogBody.add(tailPivot);
+    this._dogTailPivot = tailPivot;
+
+    const tail = _m(new THREE.CylinderGeometry(0.025, 0.042, 0.22, 8), furMat, [0, 0.11, 0], null, [-0.4, 0, 0]);
+    tailPivot.add(tail);
+
+    const legGeo = new THREE.CylinderGeometry(0.04, 0.048, 0.26, 8);
+    dogBody.add(_m(legGeo, furMat, [-0.1, 0.19, 0.15]));
+    dogBody.add(_m(legGeo, furMat, [0.1, 0.19, 0.15]));
+
+    const haunchGeo = new THREE.SphereGeometry(0.085, 8, 6);
+    dogBody.add(_m(haunchGeo, furMat, [-0.14, 0.24, -0.12], [0.7, 0.6, 1.0]));
+    dogBody.add(_m(haunchGeo, furMat, [0.14, 0.24, -0.12], [0.7, 0.6, 1.0]));
+
+    const pawGeo = new THREE.SphereGeometry(0.05, 8, 6);
+    const pawMat = new THREE.MeshStandardMaterial({
+      color: 0xb07830, roughness: 0.8, metalness: 0.04,
+    });
+    dogBody.add(_m(pawGeo, pawMat, [-0.1, 0.06, 0.15], [1, 0.5, 1.1]));
+    dogBody.add(_m(pawGeo, pawMat, [0.1, 0.06, 0.15], [1, 0.5, 1.1]));
   }
 
   /** Add external meshes to the raycast pick list (e.g. grill targets). */
@@ -237,16 +318,39 @@ export class WorldPickables {
     this._introPlaying = true;
   }
 
-  triggerTrashShake() {
-    this._trashShakeT = TRASH_SHAKE_DURATION;
+  triggerDogEat() {
+    this._dogEatT = DOG_EAT_DURATION;
+    this._dogMealsEaten++;
+    this._applyDogGrowth();
+  }
+
+  _applyDogGrowth() {
+    const m = Math.min(this._dogMealsEaten, 8);
+    if (this._dogBodyMesh) {
+      const bs = 1 + m * 0.07;
+      this._dogBodyMesh.scale.set(bs, 0.85 * bs, 1.3 * bs);
+    }
+    if (this._dogBellyMesh) {
+      const gs = 1 + m * 0.18;
+      this._dogBellyMesh.scale.set(0.9 * gs, 0.75 * gs * 1.2, 1.0 * gs);
+    }
+  }
+
+  getDogMouthWorldPos(out = new THREE.Vector3()) {
+    if (!this._dogHeadPivot) return out.set(0, 0, 0);
+    this._dogHeadPivot.getWorldPosition(out);
+    return out;
   }
 
   resetTransientState() {
-    this._trashShakeT = 0;
-    if (this._trashLid) {
-      this._trashLid.rotation.set(0, 0, 0);
-      this._trashLid.position.y = 0.44 * 2 + 0.02;
-    }
+    this._dogEatT = 0;
+    this._dogTime = 0;
+    this._dogMealsEaten = 0;
+    this._dogNextBarkT = 5 + Math.random() * 5;
+    this._applyDogGrowth();
+    if (this._dogHeadPivot) this._dogHeadPivot.rotation.set(0, 0, 0);
+    if (this._dogTailPivot) this._dogTailPivot.rotation.set(0, 0, 0);
+    if (this._dogRoot) this._dogRoot.position.y = 0;
     this._introPlaying = false;
     this._introAnims = [];
     for (const item of this._pileItems) {
@@ -330,7 +434,7 @@ export class WorldPickables {
    * @param {number} clientY
    * @param {THREE.Camera} camera
    * @param {HTMLElement} domElement
-   * @returns {{ trash?: boolean, ingredient?: string, openShop?: boolean, origin?: THREE.Vector3 } | null}
+   * @returns {{ dog?: boolean, ingredient?: string, openShop?: boolean, origin?: THREE.Vector3 } | null}
    */
   tryPick(clientX, clientY, camera, domElement) {
     const rect = domElement.getBoundingClientRect();
@@ -348,7 +452,7 @@ export class WorldPickables {
     if (!info) return null;
     if (info.kind === 'open') return { openShop: true };
     if (info.kind === 'grillPatty') return { grillPatty: true, grillPattyMesh: info.root };
-    if (info.kind === 'trash') return { trash: true };
+    if (info.kind === 'dog') return { dog: true };
     if (info.kind === 'ingredient') {
       const origin = new THREE.Vector3();
       info.root.getWorldPosition(origin);
@@ -359,21 +463,72 @@ export class WorldPickables {
 
   update(dt) {
     this._updateIntroAnim(dt);
+    this._updateDog(dt);
+  }
 
-    if (!this._trashLid) return;
-    if (this._trashShakeT <= 0 || dt <= 0) {
-      this._trashLid.rotation.x = 0;
-      this._trashLid.rotation.z = 0;
-      this._trashLid.position.y = 0.44 * 2 + 0.02;
-      return;
+  _updateDog(dt) {
+    if (!this._dogTailPivot || dt <= 0) return;
+    this._dogTime += dt;
+    const t = this._dogTime;
+
+    if (this._dogEatT > 0) {
+      this._dogEatT = Math.max(0, this._dogEatT - dt);
+      const u = 1 - this._dogEatT / DOG_EAT_DURATION;
+
+      const jumpPhase = Math.max(0, 1 - u * 5);
+      this._dogRoot.position.y = Math.sin(jumpPhase * Math.PI) * 0.06;
+
+      let headDip = 0;
+      if (u < 0.15) {
+        headDip = 0;
+      } else if (u < 0.55) {
+        headDip = Math.sin(((u - 0.15) / 0.4) * Math.PI) * 0.4;
+      }
+      this._dogHeadPivot.rotation.x = -headDip;
+
+      const chompFreq = u > 0.15 && u < 0.6 ? Math.sin(u * Math.PI * 18) * 0.15 : 0;
+      this._dogHeadPivot.rotation.x += chompFreq;
+
+      if (this._dogTongue) {
+        this._dogTongue.visible = u > 0.15 && u < 0.6;
+      }
+
+      const tailSpeed = 2 + u * 22;
+      this._dogTailPivot.rotation.z = Math.sin(t * tailSpeed) * 0.5;
+
+      if (this._dogBody) {
+        const hopAmplitude = u < 0.7 ? 0 : Math.sin((u - 0.7) / 0.3 * Math.PI * 2) * 0.02;
+        this._dogBody.position.y = hopAmplitude;
+      }
+    } else {
+      this._dogRoot.position.y = 0;
+      if (this._dogBody) this._dogBody.position.y = 0;
+
+      this._dogTailPivot.rotation.z = Math.sin(t * 4.5) * 0.25;
+
+      this._dogHeadPivot.rotation.y = Math.sin(t * 0.8) * 0.06;
+      this._dogHeadPivot.rotation.z = Math.sin(t * 0.6) * 0.03;
+
+      if (this._dogBody) {
+        const breathe = Math.sin(t * 2.2) * 0.008;
+        this._dogBody.scale.set(1, 1 + breathe, 1);
+      }
+
+      if (this._dogTongue) this._dogTongue.visible = true;
+
+      this._dogNextBarkT -= dt;
+      if (this._dogNextBarkT <= 0) {
+        this._dogNextBarkT = 8 + Math.random() * 12;
+        this._dogBarkAnimT = 0.25;
+        if (this._onDogBark) this._onDogBark();
+      }
+      if (this._dogBarkAnimT > 0) {
+        this._dogBarkAnimT -= dt;
+        const bu = 1 - Math.max(0, this._dogBarkAnimT) / 0.25;
+        this._dogHeadPivot.rotation.x = Math.sin(bu * Math.PI) * -0.15;
+        this._dogRoot.position.y = Math.sin(bu * Math.PI) * 0.02;
+      }
     }
-    this._trashShakeT = Math.max(0, this._trashShakeT - dt);
-    const u = 1 - this._trashShakeT / TRASH_SHAKE_DURATION;
-    const decay = 1 - u;
-    const wobble = Math.sin(u * Math.PI * 8) * 0.2 * decay;
-    this._trashLid.rotation.x = wobble * 0.35;
-    this._trashLid.rotation.z = wobble;
-    this._trashLid.position.y = 0.44 * 2 + 0.02 + Math.abs(wobble) * 0.02;
   }
 
   _updateIntroAnim(dt) {

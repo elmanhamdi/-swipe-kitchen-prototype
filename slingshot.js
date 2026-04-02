@@ -689,7 +689,30 @@ export class SlingshotController {
           } else {
             facePos.copy(p.pos);
           }
-          this.customerManager.notifyWrongHit(c.index);
+          const knockDir = _tmp.set(p.vel.x, 0, p.vel.z);
+          if (knockDir.lengthSq() > 0.01) knockDir.normalize();
+          else knockDir.set(0, 0, -1);
+          const knockResult = this.customerManager.notifyWrongHit(c.index, knockDir);
+
+          if (this.floatingLayer) {
+            const textPos = facePos.clone();
+            textPos.y += 0.3;
+            if (knockResult?.isKO) {
+              this.floatingLayer.spawn(textPos, 'K.O.!', '#ff2222', {
+                className: 'floating-bonus-text--pop',
+                riseSpeed: 0.7,
+                duration: 2.5,
+              });
+            } else {
+              const wrongTexts = ['WRONG!', 'NOPE!', 'YUCK!', 'EWW!', 'NOT MINE!', 'GROSS!', 'WHAT?!'];
+              this.floatingLayer.spawn(
+                textPos,
+                wrongTexts[Math.floor(Math.random() * wrongTexts.length)],
+                '#ff5555',
+                { className: 'floating-bonus-text--pop', riseSpeed: 1.6 },
+              );
+            }
+          }
           this._failImpact('face', facePos, null, { alreadyBrokeCombo: true });
         }
         return;

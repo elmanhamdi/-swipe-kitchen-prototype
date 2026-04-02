@@ -3,8 +3,7 @@
  */
 
 export const START_TIME_SECONDS = 45;
-export const TIME_BONUS_CORRECT_DELIVERY = 5;
-export const TIME_BONUS_PER_SUCCESSFUL_DELIVERY = 2;
+export const TIME_BONUS_PER_DELIVERY = 10;
 export const COMBO_MAX = 3;
 
 /** Optional flat bonus when scoring at max multiplier (before combo steps up). */
@@ -16,24 +15,6 @@ export const FAST_BUILD_MAX_SEC = 4;
 /** INSANE: throw in air longer than this (exclusive) to qualify. */
 export const INSANE_AIR_MIN_SEC = 3;
 
-/**
- * Time gain mechanic (demo):
- * Include buns; based purely on ingredient count.
- * 1st = +0.2s, 2nd = +0.4s, 3rd+ = +0.6s each (per-ingredient cap 0.6s).
- * @param {number} ingredientCount
- */
-export function computeServeTimeBonusSeconds(ingredientCount) {
-  const n = Math.max(0, Math.floor(ingredientCount));
-  let s = 0;
-  for (let i = 1; i <= n; i++) {
-    let b = 0.6;
-    if (i === 1) b = 0.2;
-    else if (i === 2) b = 0.4;
-    b = Math.min(0.6, Math.max(0, b));
-    s += b;
-  }
-  return s;
-}
 
 export class GameSession {
   constructor() {
@@ -87,7 +68,7 @@ export class GameSession {
     this._throwAirStartMs = performance.now();
   }
 
-  /** Missed throw / splat / trash / serve — abandon FAST / INSANE windows. */
+  /** Missed throw / splat / dog clear / serve — abandon FAST / INSANE windows. */
   clearBurgerTiming() {
     this._burgerBuildStartMs = null;
     this._throwAirStartMs = null;
@@ -144,17 +125,13 @@ export class GameSession {
 
       const base = entry.customer.getCoinReward();
       const { earned, comboAfter, comboApplied } = this.applyCorrectDelivery(base, 0, { fast, insane });
-      const timeBonus = TIME_BONUS_PER_SUCCESSFUL_DELIVERY + computeServeTimeBonusSeconds(thrownStack.length);
+      const timeBonus = TIME_BONUS_PER_DELIVERY;
       this.timeLeft += timeBonus;
       customerManager.onSuccessfulDelivery(entryIndex);
       return { correct: true, fast, insane, earned, comboAfter, comboApplied, timeBonus };
     }
 
     this.onComboBreakEvent();
-    if (Math.random() < 0.3) {
-      customerManager.removeAt(entryIndex);
-      customerManager.spawnOneIfSpace();
-    }
     return { correct: false };
   }
 

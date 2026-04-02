@@ -4,7 +4,7 @@
 
 import * as THREE from 'three';
 import { Burger } from './burgerData.js';
-import { createPlate, BurgerStackView, createIngredientMesh } from './burgerVisuals.js';
+import { createPlate, BurgerStackView, createIngredientMesh, buildFlyingBurgerGroup } from './burgerVisuals.js';
 import { CustomerManager } from './customerManager.js';
 import { SlingshotController } from './slingshot.js';
 import { GameSession, START_TIME_SECONDS } from './gameCore.js';
@@ -105,6 +105,7 @@ function init() {
   stackView.rebuildFromStack(burger.getStack(), { animateLast: false });
 
   const worldPickables = new WorldPickables(playArea, scene);
+  worldPickables._onDogBark = () => gameAudio.playDogBark();
   const meatGrill = new MeatGrill(playArea, plateY, plateZ);
   worldPickables.registerRaycastTargets(meatGrill.raycastTargets);
 
@@ -142,6 +143,33 @@ function init() {
   let tutorialRoundStarted = false;
   const tutorialWorldPos = new THREE.Vector3();
   const tutorialScreenPos = new THREE.Vector3();
+
+  let dogHintEverShown = false;
+  let dogHintActive = false;
+  let dogHintTimer = 0;
+  const DOG_HINT_DURATION = 3.5;
+
+  function checkDogHintAfterPlace() {
+    if (dogHintEverShown || isTutorialActive()) return;
+    const stack = burger.getStack();
+    if (stack.length < 2) return;
+    const pos = stack.length - 1;
+    const placed = stack[pos];
+    let matchesAny = false;
+    for (const entry of customerManager.entries) {
+      if (entry.phase !== 'seated') continue;
+      const order = entry.customer.order;
+      if (pos < order.length && order[pos] === placed) {
+        matchesAny = true;
+        break;
+      }
+    }
+    if (!matchesAny) {
+      dogHintEverShown = true;
+      dogHintActive = true;
+      dogHintTimer = DOG_HINT_DURATION;
+    }
+  }
 
   function isTutorialActive() {
     return tutorialStep !== 'off';
@@ -227,7 +255,19 @@ function init() {
   function updateTutorialGuide() {
     if (!tutorialGuideEl) return;
     if (!isTutorialActive() || gameSession.gameOver) {
-      hideTutorialGuide();
+      if (dogHintActive && !gameSession.gameOver) {
+        dogHintTimer -= 1 / 60;
+        if (dogHintTimer <= 0) {
+          dogHintActive = false;
+          hideTutorialGuide();
+        } else {
+          worldPickables.getDogMouthWorldPos(tutorialWorldPos);
+          tutorialWorldPos.y -= 0.8;
+          positionTutorialAtWorld(tutorialWorldPos);
+        }
+      } else {
+        hideTutorialGuide();
+      }
       return;
     }
 
@@ -449,6 +489,8 @@ function init() {
   let slingshotRef = null;
   /** @type {{ mesh: THREE.Object3D, start: THREE.Vector3, end: THREE.Vector3, t: number, dur: number, ingredient: string }[]} */
   const ingredientZips = [];
+  /** @type {{ mesh: THREE.Object3D, start: THREE.Vector3, end: THREE.Vector3, t: number, dur: number }[]} */
+  const dogFeedZips = [];
 
   let timeBonusHideTimer = 0;
   function showTimeBonusHud(seconds) {
@@ -457,14 +499,14 @@ function init() {
     if (s <= 0) return;
     if (timerBonusEl) {
       window.clearTimeout(timeBonusHideTimer);
-      timerBonusEl.textContent = `+${s.toFixed(1)}s`;
+      timerBonusEl.textContent = `+${Number.isInteger(s) ? s : s.toFixed(1)}s`;
       timerBonusEl.classList.remove('game-hud__timer-bonus--show');
       void timerBonusEl.offsetWidth;
       timerBonusEl.classList.add('game-hud__timer-bonus--show');
       timeBonusHideTimer = window.setTimeout(() => {
         timerBonusEl.classList.remove('game-hud__timer-bonus--show');
         timerBonusEl.textContent = '';
-      }, 950);
+      }, 1200);
     }
     if (timerBlockEl) {
       timerBlockEl.classList.remove('game-hud__timer--gain-pop');
@@ -489,11 +531,27 @@ function init() {
     if (tutorialBlocksPick(pick)) {
       return true;
     }
-    if (pick.trash) {
+    if (pick.dog) {
       if (slingshotRef?.isBusy()) return true;
+      if (dogHintActive) {
+        dogHintActive = false;
+        hideTutorialGuide();
+      }
       const hadStack = burger.getStack().length > 0;
-      gameAudio.playTrash();
-      if (hadStack) worldPickables.triggerTrashShake();
+      gameAudio.playDogChomp();
+      if (hadStack) {
+        worldPickables.triggerDogEat();
+        const flyStack = burger.getStack().slice();
+        const flyMesh = buildFlyingBurgerGroup(flyStack);
+        const start = new THREE.Vector3();
+        stackAnchor.getWorldPosition(start);
+        start.y += 0.22;
+        flyMesh.position.copy(start);
+        flyMesh.scale.setScalar(0.7);
+        scene.add(flyMesh);
+        const end = worldPickables.getDogMouthWorldPos();
+        dogFeedZips.push({ mesh: flyMesh, start: start.clone(), end, t: 0, dur: 0.35 });
+      }
       gameSession.resetCombo();
       gameSession.clearBurgerTiming();
       burger.reset();
@@ -569,6 +627,7 @@ function init() {
           gameAudio.playTap();
           stackView.rebuildFromStack(burger.getStack(), { animateLast: true });
           if (burger.getStack().length === 1) gameSession.notifyFirstIngredientPlaced();
+          checkDogHintAfterPlace();
           syncTutorialAfterIngredientAdded(canAdd.resolved ?? pick.ingredient);
         }
       }
@@ -608,6 +667,13 @@ function init() {
     onSettled: refreshHud,
   });
 
+  customerManager._tableAabbs = tableAabbs;
+  customerManager._onKnockbackTableHit = (tableIndex, impactPos) => {
+    slingshotRef?._scatterTable(tableIndex, impactPos);
+    gameAudio.playTableCrash();
+    screenShake.trigger(0.12);
+  };
+
   function showGameOverUI() {
     if (gameOverOverlayShown || !gameOverOverlay) return;
     gameOverOverlayShown = true;
@@ -617,7 +683,7 @@ function init() {
     gameAudio.playBell();
     gameAudio.dimMusic();
     if (gameOverCoinsEl) {
-      gameOverCoinsEl.textContent = `${gameSession.totalCoins} coins · ${gameSession.customersServed} served`;
+      gameOverCoinsEl.textContent = `${gameSession.totalCoins}`;
     }
     gameOverOverlay.classList.add('game-over-overlay--visible');
     gameOverOverlay.setAttribute('aria-hidden', 'false');
@@ -654,6 +720,10 @@ function init() {
       const z = ingredientZips.pop();
       z?.mesh.removeFromParent();
     }
+    while (dogFeedZips.length) {
+      const z = dogFeedZips.pop();
+      z?.mesh.removeFromParent();
+    }
     customerManager.resetGame();
     meatGrill.reset();
     gameAudio.stopSizzle();
@@ -668,6 +738,7 @@ function init() {
   }
 
   playAgainBtn?.addEventListener('click', () => {
+    gameAudio.playUIClick();
     resetFullGame();
   });
 
@@ -892,12 +963,19 @@ function init() {
     });
   }
 
-  shopBtn?.addEventListener('click', openShopUI);
-  shopCloseBtn?.addEventListener('click', closeShopUI);
+  shopBtn?.addEventListener('click', () => {
+    gameAudio.playUIClick();
+    openShopUI();
+  });
+  shopCloseBtn?.addEventListener('click', () => {
+    gameAudio.playUIClick();
+    closeShopUI();
+  });
 
   shopTabs?.addEventListener('click', (e) => {
     const tab = e.target.closest('.shop-tab');
     if (!tab) return;
+    gameAudio.playUIClick();
     shopActiveCategory = tab.dataset.cat;
     shopTabs.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('shop-tab--active'));
     tab.classList.add('shop-tab--active');
@@ -915,17 +993,17 @@ function init() {
         gameSession.totalCoins = result.newBalance;
         prevCoins = result.newBalance;
         applyCurrentTheme();
-        gameAudio.playTap();
+        gameAudio.playUIClick();
       }
     } else if (action === 'equip') {
       const cat = btn.dataset.cat;
       equipItem(cat, id);
       applyCurrentTheme();
-      gameAudio.playTap();
+      gameAudio.playUIClick();
     } else if (action === 'toggle') {
       toggleAccessory(id);
       applyCurrentTheme();
-      gameAudio.playTap();
+      gameAudio.playUIClick();
     }
     renderShopGrid(shopActiveCategory);
   });
@@ -992,10 +1070,28 @@ function init() {
           gameAudio.playTap();
           stackView.rebuildFromStack(burger.getStack(), { animateLast: true });
           if (burger.getStack().length === 1) gameSession.notifyFirstIngredientPlaced();
+          checkDogHintAfterPlace();
           syncTutorialAfterIngredientAdded(z.ingredient);
         }
         ingredientZips.splice(i, 1);
         refreshHud();
+      }
+    }
+
+    for (let i = dogFeedZips.length - 1; i >= 0; i--) {
+      const z = dogFeedZips[i];
+      z.t += dt;
+      const u = Math.min(1, z.t / z.dur);
+      const e = 1 - (1 - u) ** 3;
+      const p = z.start.clone().lerp(z.end, e);
+      p.y += Math.sin(u * Math.PI) * 0.4;
+      z.mesh.position.copy(p);
+      z.mesh.rotation.y += dt * 14;
+      const shrink = 0.7 * (1 - u * 0.85);
+      z.mesh.scale.setScalar(shrink);
+      if (u >= 1) {
+        z.mesh.removeFromParent();
+        dogFeedZips.splice(i, 1);
       }
     }
 

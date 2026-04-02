@@ -18,7 +18,8 @@ export const AUDIO_LEVELS = {
   correct: 0.58,
   wrongSplat: 0.68,
   missThud: 0.32,
-  trash: 0.52,
+  dogChomp: 0.52,
+  dogBark: 0.28,
   timeGain: 0.46,
   coinTick: 0.48,
   tickTock: 0.4,
@@ -28,6 +29,7 @@ export const AUDIO_LEVELS = {
   tableCrash: 0.72,
   mumble: 0.32,
   ingredientPlace: 0.45,
+  uiClick: 0.52,
 };
 
 const MUSIC_TRACK_URL = './assets/O%20P%20Baron%20-%20Welcome%20to%20Our%20Show.mp3';
@@ -115,17 +117,50 @@ function createThudBuffer(ctx, durationSec = 0.12) {
   return buffer;
 }
 
-function createTrashBuffer(ctx, durationSec = 0.2) {
+function createDogBarkBuffer(ctx, durationSec = 0.16) {
+  const sr = ctx.sampleRate;
+  const n = Math.floor(sr * durationSec);
+  const buffer = ctx.createBuffer(1, n, sr);
+  const d = buffer.getChannelData(0);
+  const pitch = 520 + Math.random() * 60;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const env = Math.min(1, t / 0.004) * Math.exp(-t * 18)
+      * (1 + Math.sin(t * Math.PI * 45) * 0.12);
+    const tone = Math.sin(2 * Math.PI * pitch * t) * 0.3
+      + Math.sin(2 * Math.PI * pitch * 2.0 * t) * 0.08;
+    const soft = (Math.random() * 2 - 1) * 0.03 * Math.exp(-t * 25);
+    d[i] = Math.max(-1, Math.min(1, (tone + soft) * env));
+  }
+  return buffer;
+}
+
+function createDogChompBuffer(ctx, durationSec = 0.4) {
   const sr = ctx.sampleRate;
   const n = Math.floor(sr * durationSec);
   const buffer = ctx.createBuffer(1, n, sr);
   const d = buffer.getChannelData(0);
   for (let i = 0; i < n; i++) {
     const t = i / sr;
-    const env = Math.exp(-t * 12);
-    const slide = Math.sin(2 * Math.PI * (420 - t * 900) * t) * 0.35;
-    const scrape = (Math.random() * 2 - 1) * 0.25;
-    d[i] = (slide + scrape) * env * 0.5;
+    const barkEnv = Math.min(1, t / 0.005) * Math.exp(-t * 14);
+    const bark = Math.sin(2 * Math.PI * 195 * t) * 0.4
+      + Math.sin(2 * Math.PI * 390 * t) * 0.15;
+
+    let chomp = 0;
+    const chompOnsets = [0.12, 0.2, 0.28];
+    for (const onset of chompOnsets) {
+      if (t >= onset && t < onset + 0.05) {
+        const ct = t - onset;
+        const cEnv = Math.min(1, ct / 0.002) * Math.exp(-ct * 60);
+        chomp += (Math.sin(2 * Math.PI * 280 * ct) * 0.25
+          + (Math.random() * 2 - 1) * 0.15) * cEnv;
+      }
+    }
+
+    const tail = t > 0.32 ? Math.sin(2 * Math.PI * 520 * t) * 0.08
+      * Math.exp(-(t - 0.32) * 18) : 0;
+
+    d[i] = Math.max(-1, Math.min(1, (bark * barkEnv + chomp + tail) * 0.7));
   }
   return buffer;
 }
@@ -321,21 +356,26 @@ function createBouncyLoopBuffer(ctx, durationSec = 32) {
   return buffer;
 }
 
-/** Short cheerful “time up” sting. */
-function createTimeUpBuffer(ctx, durationSec = 0.45) {
+/** Short alarm-clock bell — rapid ding-ding-ding strikes. */
+function createTimeUpBuffer(ctx, durationSec = 0.55) {
   const sr = ctx.sampleRate;
   const n = Math.floor(sr * durationSec);
   const buffer = ctx.createBuffer(1, n, sr);
   const d = buffer.getChannelData(0);
+  const strikeRate = 14;
+  const strikeInt = 1 / strikeRate;
+  const f1 = 2100, f2 = 2350;
   for (let i = 0; i < n; i++) {
     const t = i / sr;
-    const fadeIn = Math.min(1, t / 0.02);
-    const fadeOut = Math.max(0, 1 - Math.max(0, t - (durationSec - 0.08)) / 0.08);
-    const env = fadeIn * fadeOut;
-    const buzz = Math.sign(Math.sin(2 * Math.PI * 120 * t)) * 0.12;
-    const tone = Math.sin(2 * Math.PI * 185 * t) * 0.10;
-    const hi = Math.sin(2 * Math.PI * 370 * t) * 0.04;
-    d[i] = (buzz + tone + hi) * env * 0.55;
+    const fadeOut = Math.max(0, 1 - Math.max(0, t - (durationSec - 0.06)) / 0.06);
+    const sn = Math.floor(t / strikeInt);
+    const st = t - sn * strikeInt;
+    const sEnv = Math.min(1, st / 0.0005) * Math.exp(-st * 35);
+    const freq = sn % 2 === 0 ? f1 : f2;
+    const fundamental = Math.sin(2 * Math.PI * freq * st) * 0.32;
+    const p2 = Math.sin(2 * Math.PI * freq * 2.76 * st) * 0.14;
+    const p3 = Math.sin(2 * Math.PI * freq * 5.4 * st) * 0.06;
+    d[i] = (fundamental + p2 + p3) * sEnv * fadeOut;
   }
   return buffer;
 }
@@ -393,34 +433,25 @@ function createGrillDingBuffer(ctx, durationSec = 0.35) {
   return buffer;
 }
 
-/** Kitchen-timer bell — warm metallic double-ding with shimmer. */
-function createBellBuffer(ctx, durationSec = 2.2) {
+/** Two quick bell dings to accent the alarm. */
+function createBellBuffer(ctx, durationSec = 0.4) {
   const sr = ctx.sampleRate;
   const n = Math.floor(sr * durationSec);
   const buffer = ctx.createBuffer(1, n, sr);
   const d = buffer.getChannelData(0);
-  const strikes = [0, 0.3, 0.6, 1.0, 1.3];
-  const f0 = 680;
-  const partials = [
-    { ratio: 1.0,  amp: 0.40, decay: 3.0 },
-    { ratio: 1.5,  amp: 0.12, decay: 4.5 },
-    { ratio: 2.0,  amp: 0.20, decay: 5.0 },
-    { ratio: 2.71, amp: 0.08, decay: 7.0 },
-    { ratio: 3.6,  amp: 0.04, decay: 9.0 },
-  ];
+  const strikes = [0.0, 0.15];
+  const f0 = 1800;
   for (let i = 0; i < n; i++) {
     const t = i / sr;
     let s = 0;
-    for (const st of strikes) {
-      if (t < st) continue;
-      const dt = t - st;
-      const hitEnv = Math.min(1, dt * 800) * Math.exp(-dt * 1.5);
-      for (const p of partials) {
-        s += p.amp * hitEnv * Math.exp(-dt * p.decay) *
-          Math.sin(2 * Math.PI * f0 * p.ratio * dt);
-      }
+    for (const onset of strikes) {
+      if (t < onset) continue;
+      const dt = t - onset;
+      const env = Math.min(1, dt / 0.0005) * Math.exp(-dt * 22);
+      s += Math.sin(2 * Math.PI * f0 * dt) * 0.28 * env;
+      s += Math.sin(2 * Math.PI * f0 * 3.2 * dt) * 0.10 * env;
     }
-    d[i] = Math.max(-1, Math.min(1, s * 0.85));
+    d[i] = Math.max(-1, Math.min(1, s));
   }
   return buffer;
 }
@@ -558,6 +589,26 @@ function createMumbleBuffer(ctx, voice) {
   return buffer;
 }
 
+/** Soft, bubbly UI pop — warm fundamental + gentle overtone with quick decay. */
+function createUIClickBuffer(ctx, durationSec = 0.12) {
+  const sr = ctx.sampleRate;
+  const n = Math.max(1, Math.floor(sr * durationSec));
+  const buffer = ctx.createBuffer(1, n, sr);
+  const d = buffer.getChannelData(0);
+  const f0 = 680;
+  const f1 = 1020;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const attack = Math.min(1, t / 0.002);
+    const env = attack * Math.exp(-t * 32);
+    const body = Math.sin(2 * Math.PI * f0 * t) * 0.45;
+    const bright = Math.sin(2 * Math.PI * f1 * t) * 0.2 * Math.exp(-t * 55);
+    const pop = (Math.random() * 2 - 1) * 0.12 * Math.exp(-t * 90);
+    d[i] = Math.max(-1, Math.min(1, (body + bright + pop) * env));
+  }
+  return buffer;
+}
+
 function createIngredientPlaceBuffer(ctx, durationSec = 0.08) {
   const sr = ctx.sampleRate;
   const n = Math.max(1, Math.floor(sr * durationSec));
@@ -599,7 +650,8 @@ export class GameAudio {
     this._correct = null;
     this._wrong = null;
     this._thud = null;
-    this._trash = null;
+    this._dogChomp = null;
+    this._dogBark = null;
     /** @type {THREE.Audio | null} */
     this._timeUp = null;
     this._timeGain = null;
@@ -633,7 +685,8 @@ export class GameAudio {
       correct: createPlinBuffer(ctx),
       wrongSplat: createSplatBuffer(ctx),
       missThud: createThudBuffer(ctx),
-      trash: createTrashBuffer(ctx),
+      dogChomp: createDogChompBuffer(ctx),
+      dogBark: createDogBarkBuffer(ctx),
       timeUp: createTimeUpBuffer(ctx),
       timeGain: createTimeGainBuffer(ctx),
       tickTock: createTickTockBuffer(ctx),
@@ -642,6 +695,7 @@ export class GameAudio {
       bell: createBellBuffer(ctx),
       tableCrash: createTableCrashBuffer(ctx),
       ingredientPlace: createIngredientPlaceBuffer(ctx),
+      uiClick: createUIClickBuffer(ctx),
     };
 
     for (let i = 0; i < 6; i++) {
@@ -662,8 +716,11 @@ export class GameAudio {
     this._thud = new THREE.Audio(this.listener);
     this._thud.setBuffer(this._buffers.missThud);
 
-    this._trash = new THREE.Audio(this.listener);
-    this._trash.setBuffer(this._buffers.trash);
+    this._dogChomp = new THREE.Audio(this.listener);
+    this._dogChomp.setBuffer(this._buffers.dogChomp);
+
+    this._dogBark = new THREE.Audio(this.listener);
+    this._dogBark.setBuffer(this._buffers.dogBark);
 
     this._tableCrash = new THREE.Audio(this.listener);
     this._tableCrash.setBuffer(this._buffers.tableCrash);
@@ -688,6 +745,9 @@ export class GameAudio {
 
     this._ingredientPlace = new THREE.Audio(this.listener);
     this._ingredientPlace.setBuffer(this._buffers.ingredientPlace);
+
+    this._uiClick = new THREE.Audio(this.listener);
+    this._uiClick.setBuffer(this._buffers.uiClick);
 
     this._music = new THREE.Audio(this.listener);
     this._music.setLoop(true);
@@ -819,8 +879,24 @@ export class GameAudio {
     playOneShot(this._thud, this._sfxVol('missThud'));
   }
 
-  playTrash() {
-    playOneShot(this._trash, this._sfxVol('trash'));
+  playDogChomp() {
+    playOneShot(this._dogChomp, this._sfxVol('dogChomp'));
+  }
+
+  playDogBark() {
+    if (!this.listener) return;
+    const ctx = this.listener.context;
+    if (ctx.state !== 'running') return;
+    const vol = this._sfxVol('dogBark');
+    if (vol <= 0) return;
+    const buf = createDogBarkBuffer(ctx);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const gain = ctx.createGain();
+    gain.gain.value = vol;
+    src.connect(gain);
+    gain.connect(this.listener.getInput());
+    src.start();
   }
 
   playTableCrash() {
@@ -849,6 +925,10 @@ export class GameAudio {
 
   playIngredientPlace() {
     playOneShot(this._ingredientPlace, this._sfxVol('ingredientPlace'));
+  }
+
+  playUIClick() {
+    playOneShot(this._uiClick, this._sfxVol('uiClick'));
   }
 
   dimMusic() {
