@@ -474,7 +474,8 @@ export class MeatGrill {
 
     /** @type {THREE.Object3D[]} */
     this._serveStack = [];
-    this._STACK_Y_OFFSET = 0.09;
+    /** Vertical gap between cooked patties on the serve plate (world units). */
+    this._STACK_Y_OFFSET = 0.14;
     this._serveMeshPivot = new THREE.Group();
     this._serveMeshPivot.position.copy(this._servePlatePos).add(new THREE.Vector3(0, 0.06, 0));
     this._grillGroup.add(this._serveMeshPivot);
@@ -566,6 +567,31 @@ export class MeatGrill {
     return true;
   }
 
+  /**
+   * Işında birden fazla grill köftesi varken doğru hedefi seç:
+   * 1) Çevrilebilir (readyToFlip) slot köftesi — servis tabağından önce, mesafeden bağımsız
+   * 2) Herhangi bir slottaki köfte (pişiyor / bekle) — servisten önce
+   * 3) Servis tabağı köfteleri
+   * @param {THREE.Object3D[]} meshesInRayOrder yakından uzağa
+   */
+  choosePattyMeshForRayOrder(meshesInRayOrder) {
+    if (!meshesInRayOrder?.length) return null;
+    for (const m of meshesInRayOrder) {
+      for (const slot of this._slots) {
+        if (slot._pattyMesh === m && slot.state === STATE.READY_FLIP) return m;
+      }
+    }
+    for (const m of meshesInRayOrder) {
+      for (const slot of this._slots) {
+        if (slot._pattyMesh === m) return m;
+      }
+    }
+    for (const m of meshesInRayOrder) {
+      if (this._serveStack.includes(m)) return m;
+    }
+    return meshesInRayOrder[0];
+  }
+
   /** @returns {'flipped' | 'served' | 'wait' | 'idle'} */
   onPattyClick(hitMesh) {
     if (hitMesh && this._serveStack.includes(hitMesh)) {
@@ -577,8 +603,13 @@ export class MeatGrill {
         return 'flipped';
       }
     }
-    if (this._serveStack.length > 0) {
-      return 'served';
+    if (hitMesh) {
+      for (const slot of this._slots) {
+        if (slot._pattyMesh === hitMesh) {
+          return slot.onPattyClick();
+        }
+      }
+      return 'idle';
     }
     for (const slot of this._slots) {
       const r = slot.onPattyClick();

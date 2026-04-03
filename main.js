@@ -562,7 +562,9 @@ function init() {
     }
     if (pick.grillPatty) {
       if (slingshotRef?.isBusy()) return true;
-      const result = meatGrill.onPattyClick(pick.grillPattyMesh);
+      const pattyMesh = meatGrill.choosePattyMeshForRayOrder(pick.grillPattyMeshesInOrder);
+      if (!pattyMesh) return true;
+      const result = meatGrill.onPattyClick(pattyMesh);
       if (result === 'served') {
         const canAdd = burger.canAddIngredient('meat');
         if (canAdd.ok) {

@@ -2,7 +2,7 @@
  * Cosmetic shop: catalog, ownership, equipped selections, localStorage persistence.
  */
 
-const LS_KEY = 'swipeKitchenShop_v6';
+const LS_KEY = 'swipeKitchenShop_v7';
 
 export const SHOP_CATALOG = {
   walls: [
@@ -86,7 +86,7 @@ function defaultState() {
     owned.push(def.id);
     equipped[cat] = def.id;
   }
-  return { coins: 10000, owned, equipped };
+  return { coins: 0, owned, equipped };
 }
 
 let _state = defaultState();

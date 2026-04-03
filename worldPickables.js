@@ -55,6 +55,8 @@ export class WorldPickables {
 
     /** @type {THREE.Object3D[]} */
     this._meshes = [];
+    /** @type {THREE.Object3D[]} last grill raycast set — removed before re-register */
+    this._grillRaycastRefs = [];
     this._pileRoots = new Map();
     this._dogEatT = 0;
     this._dogTime = 0;
@@ -279,6 +281,11 @@ export class WorldPickables {
 
   /** Add external meshes to the raycast pick list (e.g. grill targets). */
   registerRaycastTargets(objects) {
+    for (const m of this._grillRaycastRefs) {
+      const idx = this._meshes.indexOf(m);
+      if (idx >= 0) this._meshes.splice(idx, 1);
+    }
+    this._grillRaycastRefs = objects.length ? [...objects] : [];
     for (const obj of objects) {
       if (!this._meshes.includes(obj)) this._meshes.push(obj);
     }
@@ -434,7 +441,7 @@ export class WorldPickables {
    * @param {number} clientY
    * @param {THREE.Camera} camera
    * @param {HTMLElement} domElement
-   * @returns {{ dog?: boolean, ingredient?: string, openShop?: boolean, origin?: THREE.Vector3 } | null}
+   * @returns {{ dog?: boolean, ingredient?: string, openShop?: boolean, origin?: THREE.Vector3, grillPatty?: boolean, grillPattyMeshesInOrder?: THREE.Object3D[] } | null}
    */
   tryPick(clientX, clientY, camera, domElement) {
     const rect = domElement.getBoundingClientRect();
@@ -444,21 +451,36 @@ export class WorldPickables {
     _ray.setFromCamera(_ndc, camera);
     const hits = _ray.intersectObjects(this._meshes, true);
     if (!hits.length) return null;
-    let info = null;
+
+    /** @type {ReturnType<typeof findPickRoot> | null} */
+    let closestPick = null;
+    /** @type {THREE.Object3D[]} */
+    const grillPattyMeshesInOrder = [];
+    const seenGrill = new Set();
     for (const hit of hits) {
-      info = findPickRoot(hit.object);
-      if (info) break;
+      const info = findPickRoot(hit.object);
+      if (!info) continue;
+      if (!closestPick) closestPick = info;
+      if (info.kind === 'grillPatty' && !seenGrill.has(info.root)) {
+        seenGrill.add(info.root);
+        grillPattyMeshesInOrder.push(info.root);
+      }
     }
-    if (!info) return null;
-    if (info.kind === 'open') return { openShop: true };
-    if (info.kind === 'grillPatty') return { grillPatty: true, grillPattyMesh: info.root };
-    if (info.kind === 'dog') return { dog: true };
-    if (info.kind === 'ingredient') {
-      const origin = new THREE.Vector3();
-      info.root.getWorldPosition(origin);
-      return { ingredient: info.type, origin };
+    if (!closestPick) return null;
+
+    if (closestPick.kind !== 'grillPatty') {
+      if (closestPick.kind === 'open') return { openShop: true };
+      if (closestPick.kind === 'dog') return { dog: true };
+      if (closestPick.kind === 'ingredient') {
+        const origin = new THREE.Vector3();
+        closestPick.root.getWorldPosition(origin);
+        return { ingredient: closestPick.type, origin };
+      }
+      return null;
     }
-    return null;
+
+    if (grillPattyMeshesInOrder.length === 0) return null;
+    return { grillPatty: true, grillPattyMeshesInOrder };
   }
 
   update(dt) {
